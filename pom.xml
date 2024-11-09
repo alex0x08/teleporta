@@ -1,0 +1,223 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.Ox08.teleporta</groupId>
+    <artifactId>teleporta3</artifactId>
+    <version>3.1-CURRENT</version>
+    <name>Teleporta Project v3</name>
+    <url>https://0x08.ru</url>
+    <inceptionYear>2015</inceptionYear>
+    <scm>
+        <connection>scm:git:https://github.com/alex0x08/paster.git</connection>
+        <url>scm:git:https://github.com/alex0x08/paster.git</url>
+        <tag>HEAD</tag>
+    </scm>
+    <distributionManagement>
+        <repository>
+            <id>deployment</id>
+            <name>Internal Releases</name>
+            <url>file:///c:/work/releases/repository/maven-repository/</url>
+        </repository>
+    </distributionManagement>
+
+    <developers>
+        <developer>
+            <name>Alex Chernyshev</name>
+            <timezone>GMT+4</timezone>
+        </developer>
+    </developers>
+
+    <organization>
+        <name>0x08 Software</name>
+        <url>http://0x08.ru</url>
+    </organization>
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <application.build.timestamp>${maven.build.timestamp}</application.build.timestamp>
+        <application.description>${project.description}</application.description>
+        <application.name>${project.name}</application.name>
+        <application.version>${project.version}</application.version>
+
+    </properties>
+    <build>
+        <plugins>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>buildnumber-maven-plugin</artifactId>
+                <version>1.4</version>
+                <configuration>
+                    <format>{0,number}</format>
+                    <items>
+                        <item>buildNumber</item>
+                    </items>
+                    <doCheck>false</doCheck>
+                    <doUpdate>false</doUpdate>
+                    <revisionOnScmFailure>unknownbuild</revisionOnScmFailure>
+                    <getRevisionOnlyOnce>true</getRevisionOnlyOnce>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>buildnumber</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>create</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                    <showWarnings>true</showWarnings>
+                    <showDeprecation>true</showDeprecation>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>com.github.genthaler</groupId>
+                <artifactId>beanshell-maven-plugin</artifactId>
+                <version>1.4</version>
+                <executions>
+                    <execution>
+                        <id>pack-binary</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <!--
+                                Some inline scripting in pure Java, why not?
+                            -->
+                            <script>
+                                <![CDATA[
+                        import java.io.*;
+
+                        // function should be defined before actual call
+                        // this just appends source binary to target
+                         void copy(File src,OutputStream fout) {
+                            FileInputStream fin = null;
+                            long total = 0;
+                            try {
+                            fin =new FileInputStream(src);
+                            byte[] b = new byte[1024];
+                            int noOfBytes = 0;
+                            while( (noOfBytes = fin.read(b)) != -1 )
+                              {
+                                fout.write(b, 0, noOfBytes);
+                                total += noOfBytes;
+                              }
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            } finally {
+                                fout.flush();
+                                if (fin!=null) { fin.close(); }
+                            }
+                           System.out.println("written: "+total);
+                        }
+
+                        String projectDir = System.getProperty("maven.multiModuleProjectDirectory");
+
+                        File t = new File(projectDir,"target");
+                        File srcJar = null;
+
+                        for (File f: t.listFiles()) {
+                                if (f.getName().endsWith(".jar")) {
+                                    srcJar = f;
+                                    System.out.println("file:" +f);
+                                    break;
+                                }
+                        }
+
+                        // target combined binary
+                        File target = new File(projectDir+"/target/teleporta.cmd");
+                        if (target.exists()) {
+                            target.delete();
+                        }
+                        // shell bootloader
+                        File fboot1 = new File(projectDir+"/src/main/cmd/boot.sh");
+                        File fboot2 = new File(projectDir+"/src/main/cmd/boot.cmd");
+
+                        File payload = srcJar;
+                        // open write stream to target combined binary
+                        FileOutputStream fout = new FileOutputStream(target);
+                        // write bootloader
+                        copy(fboot1,fout);
+                        copy(fboot2,fout);
+
+                        byte[] b = "0X080X080X080X08".getBytes();
+
+                        fout.write(b, 0, b.length);
+
+                        copy(payload,fout);
+
+                        fout.write(b, 0, b.length);
+
+                        copy(srcJar,fout);
+                        fout.close();
+                        target.setExecutable(true);
+
+                        ]]>
+                            </script>
+                        </configuration>
+                    </execution>
+                </executions>
+
+                <configuration>
+                    <quiet>true</quiet>
+                </configuration>
+
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.1</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.Ox08.teleporta.v3.Main</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <version>3.1.3</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+        <resources>
+            <resource>
+                <filtering>true</filtering>
+                <directory>src/main/resources/</directory>
+                <includes>
+                    <include>release.properties</include>
+                </includes>
+            </resource>
+            <resource>
+                <filtering>false</filtering>
+                <directory>src/main/resources/</directory>
+                <excludes>
+                    <exclude>release.properties</exclude>
+                </excludes>
+            </resource>
+        </resources>
+    </build>
+</project>
