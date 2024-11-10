@@ -20,6 +20,7 @@ In 'portal' mode, Teleporta connects to relay using provided url, registers self
 Each file or folder found in that folders will be automatically transferred to remote machine via relay.
 
 
+
 # How to run
 
 Just download  latest `teleporta.cmd` from releases and run in console. 
@@ -43,6 +44,16 @@ teleporta.cmd http://majestic12:8989/2d52fb71ef728d8813a001a6592c8248801d844ce2c
 ![Sample 1](https://github.com/alex0x08/teleporta/blob/main/images/screen1.gif?raw=true)
 ![Sample 2](https://github.com/alex0x08/teleporta/blob/main/images/screen2.gif?raw=true)
 ![Sample 3](https://github.com/alex0x08/teleporta/blob/main/images/screen3.gif?raw=true)
+
+# Cryptography
+
+Each portal has its own pair of keys (public&private) used for file encryption. Public key is shared throught relay with all other connected portals and used when one relay send file to another.
+Let's say portal 'Bob' wants to transfer file thought relay to portal 'Alice'. Bob takes Alice's public key from relay and use it to encrypt file which need to be transferred.
+When received, Alice decrypts file using own private key.
+
+
+The community version uses weak algorihms: 2048bit RSA and 128bit AES, fair enough for normal users but easy breakable by any 'special forces', so please don't try to use this tool for anything bad.
+
 
 # How to build
 
