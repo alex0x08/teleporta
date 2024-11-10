@@ -15,10 +15,15 @@ There are two work modes: 'relay' (server) and 'portal' (client).
 In 'relay' mode, Teleporta start to operate as relay: app will start embedded HTTP-server, which accepts incoming requests. 
 Then another Teleporta instance but in 'portal' mode, registers on that relay and uploads files and download them on another side.
 
+![Relay mode](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-relay-mode.png?raw=true)
+
+
 In 'portal' mode, Teleporta connects to relay using provided url, registers self on that relay and start to monitor special local folders for changes. 
 
 Each file or folder found in that folders will be automatically transferred to remote machine via relay.
 
+
+![Portal mode](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-portal.png?raw=true)
 
 
 # How to run
@@ -37,6 +42,9 @@ You need to copy it and paste as first argument to start Teleporta in 'portal' m
 teleporta.cmd http://majestic12:8989/2d52fb71ef728d8813a001a6592c8248801d844ce2c0d0a6976f10b73d3bdb463ea4cd09c1ad9a25d5b83a543238
 ```
 
+It's possible to run both relay and portal on same machine, useful for testing:
+
+![Both Portal and relay on same machine](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-both.png?raw=true)
 
 
 # In action
