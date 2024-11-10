@@ -171,6 +171,8 @@ public class TeleportaCommons {
         }
     }
 
+
+
     public static void setDebugLogging() {
             // setup logging for client connection
             Logger.getLogger("sun.net.www.protocol.http.HttpURLConnection")

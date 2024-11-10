@@ -43,7 +43,7 @@ public class SystemInfo {
         if (wasLoaded) {
             throw new RuntimeException("Already initalized");
         }
-        try (InputStream in = getClass().getResourceAsStream("/release.properties");) {
+        try (InputStream in = getClass().getResourceAsStream("/release.properties")) {
             final Properties p = new Properties();
             p.load(in);
             this.buildNum = p.getProperty("build.number", "unknown");
@@ -53,9 +53,5 @@ public class SystemInfo {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-    }
-    private static final SystemInfo INSTANCE = new SystemInfo();
-    public static SystemInfo getInstance() {
-        return INSTANCE;
     }
 }

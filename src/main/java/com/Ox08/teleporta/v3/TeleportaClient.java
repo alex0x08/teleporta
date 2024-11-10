@@ -16,6 +16,7 @@ import java.nio.file.Paths;
 import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
 import java.util.*;
 import java.util.concurrent.Executors;
@@ -61,6 +62,7 @@ public class TeleportaClient {
     }
     public static void main(String[] args) throws Exception {
         setDebugLogging();
+      //  System.setProperty("relayKey","/opt/work/tmp/tele.pub");
         init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa", true);
     }
     public static void init(String relayUrl, boolean allowClipboard) throws Exception {
@@ -102,14 +104,8 @@ public class TeleportaClient {
         // build client
         final TeleportaClient c = new TeleportaClient(ctx);
         // register on relay
-        c.register();
-
-        if (ctx.sessionId == null || ctx.sessionId.isEmpty()) {
+        if (!c.register()) {
             System.err.printf("Cannot register on relay: %s%n", relayUrl);
-            return;
-        }
-        if (ctx.relayPublicKey == null || ctx.relayPublicKey.isEmpty()) {
-            System.err.printf("Empty relay key: %s%n", relayUrl);
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
@@ -188,6 +184,7 @@ public class TeleportaClient {
                 c.networkError = true;
             }
         }, 0, 5, TimeUnit.SECONDS);
+        LOG.info("Connected to relay.");
     }
     /**
      * Get pending files
@@ -615,7 +612,7 @@ public class TeleportaClient {
      * @throws IOException
      *      on network errors
      */
-    public void register() throws IOException {
+    public boolean register() throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine("registering on relay");
         }
@@ -636,11 +633,56 @@ public class TeleportaClient {
         final HttpURLConnection http = (HttpURLConnection) con;
         http.setRequestMethod("POST");
         http.setDoOutput(true);
+
         // build request to relay (yep, it's based on java.util.Properties)
         final Properties props = new Properties();
         props.setProperty("name", portalName);
         props.setProperty("publicKey",
                 toHex(ctx.keyPair.getPublic().getEncoded(), 0, 0));
+
+        boolean privateRelay = false;
+        final String relayKey;
+
+        /*
+            Check for relay public key
+         */
+        final String relayPublicKeyFile =
+                System.getProperty("relayKey", null);
+        if (relayPublicKeyFile!=null) {
+            final File k = new File(relayPublicKeyFile);
+            if (!k.isFile() || !k.canRead()) {
+                System.err.printf("Provided relay key file is not readable: %s", relayPublicKeyFile);
+                return false;
+            }
+            // stupid check for completely incorrect key file
+            if (k.length() <5 || k.length() > 4096) {
+                System.err.printf("Provided relay key file corrupt or empty: %s", relayPublicKeyFile);
+                return false;
+            }
+            // try parse it
+            relayKey = parseRelayPublicKey(Files.readAllBytes(k.toPath()));
+
+            if (LOG.isLoggable(Level.FINE)) {
+                LOG.fine(String.format("parsed relay key %s", relayKey));
+            }
+            try {
+                // decode public key
+                final PublicKey relayPublicKey = tc.restorePublicKey(fromHex(relayKey));
+                // generate 'hello' message
+                final byte[] hello = new byte[16];
+                new SecureRandom().nextBytes(hello);
+                // ecrypt it with relay's public key
+                byte[] enc =tc.encryptKey(hello,relayPublicKey);
+                // send encrypted hello message during register - relay will try to decrypt it
+                // if succeeded - you have correct relay key
+                props.setProperty("hello", toHex(enc,0,0));
+                privateRelay = true;
+            } catch (Exception e) {
+                throw new RuntimeException("Corrupt relay key",e);
+            }
+        } else {
+            relayKey = null;
+        }
         // respond without encryption - to transfer relay's public key
         try (OutputStream os = http.getOutputStream()) {
             props.store(os, "");
@@ -652,7 +694,7 @@ public class TeleportaClient {
         if (code != HttpURLConnection.HTTP_OK) {
             LOG.warning(String.format("incorrect relay response: %d", code));
             http.disconnect();
-            return;
+            return false;
         }
         // parse response from relay (also based on java.util.Properties)
         final Properties resp = new Properties();
@@ -661,8 +703,25 @@ public class TeleportaClient {
         }
         // reflect with context
         ctx.sessionId = resp.getProperty("id", null);
-        ctx.relayPublicKey = resp.getProperty("publicKey", null);
+        // if relay is private - just copy already loaded key to context,
+        // because private relay will not publish own public key
+        if (privateRelay) {
+            ctx.relayPublicKey = relayKey;
+        } else {
+            // for non-private relays - copy key from relay response
+            ctx.relayPublicKey = resp.getProperty("publicKey", null);
+            if (ctx.relayPublicKey == null || ctx.relayPublicKey.isEmpty()) {
+                System.err.printf("Relay key is empty: %s%n", ctx.relayUrl);
+                return false;
+            }
+        }
+        // could be a bug there
+        if (ctx.sessionId == null || ctx.sessionId.isEmpty()) {
+            System.err.printf("Got empty session id from relay: %s%n", ctx.relayUrl);
+            return false;
+        }
         http.disconnect();
+        return true;
     }
 
     /**
@@ -699,7 +758,6 @@ public class TeleportaClient {
         try (FileOutputStream fout = new FileOutputStream(out);
              final ZipOutputStream zos = new ZipOutputStream(fout)) {
             final Path pp = folder.toPath();
-            int c = pp.toString().length();
             try (Stream<Path> entries = Files.walk(pp)
                     .filter(path -> !Files.isDirectory(path))) {
                 // folders will be added automatically
@@ -741,5 +799,9 @@ public class TeleportaClient {
             this.relayUrl = relayUrl;
             this.allowClipboard = allowClipboard;
         }
+    }
+    private static String parseRelayPublicKey(byte[] data) {
+        return new String(data)
+                .replaceAll("[^a-z0-9]","");
     }
 }

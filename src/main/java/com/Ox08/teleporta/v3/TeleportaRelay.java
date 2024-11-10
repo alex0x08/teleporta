@@ -45,6 +45,7 @@ public class TeleportaRelay {
         setDebugLogging();
         System.setProperty("javax.net.debug", "all");
         System.setProperty("seed", "testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa");
+       // System.setProperty("privateRelay","true");
         init();
     }
     /**
@@ -59,7 +60,15 @@ public class TeleportaRelay {
         final HttpServer server = HttpServer.create(new InetSocketAddress(port), 50);
         final TeleCrypt tc = new TeleCrypt();
         final KeyPair rkp = tc.generateKeys();
-        final RelayRuntimeContext rc = new RelayRuntimeContext(teleportaHome, rkp);
+        final boolean privateRelay =
+                Boolean.parseBoolean(System.getProperty("privateRelay", "false"));
+
+        if (privateRelay) {
+            System.out.println("Relay key: ");
+            printRelayKey(rkp.getPublic().getEncoded());
+        }
+
+        final RelayRuntimeContext rc = new RelayRuntimeContext(teleportaHome, rkp ,privateRelay);
         // background task to remove expired portals
         ses.scheduleAtFixedRate(() -> {
             final Set<String> expired = new HashSet<>();
@@ -164,9 +173,11 @@ public class TeleportaRelay {
         final Map<String, RuntimePortal> portals = new LinkedHashMap<>(); // all registered portals
         final Map<String, String> portalNames = new LinkedHashMap<>(); // all registered portals names
         final KeyPair relayPair; // relay keys
-        RelayRuntimeContext(File storageDir, KeyPair kp) {
+        final boolean privateRelay;
+        RelayRuntimeContext(File storageDir, KeyPair kp,boolean privateRelay) {
             this.storageDir = storageDir;
-            relayPair = kp;
+            this.relayPair = kp;
+            this.privateRelay = privateRelay;
         }
     }
     /**
@@ -252,6 +263,22 @@ public class TeleportaRelay {
             final String name = data.getProperty("name", null),
                     // portal's public key
                    publicKey = data.getProperty("publicKey", null);
+
+            if (rc.privateRelay) {
+                final String helloMsg = data.getProperty("hello",null);
+                if (helloMsg==null || helloMsg.isEmpty()) {
+                    LOG.warning("Hello message required.");
+                    respondAndClose(403, httpExchange);
+                    return;
+                }
+                try {
+                    tc.decryptKey(fromHex(helloMsg), rc.relayPair.getPrivate());
+                } catch (Exception ignore) {
+                    LOG.warning("Incorrect relay key provided.");
+                    respondAndClose(403, httpExchange);
+                    return;
+                }
+            }
             // unique ID
             String id = generateUniqueID() + "";
             // check for portal name
@@ -304,8 +331,10 @@ public class TeleportaRelay {
             // respond back generated ID
             final Properties resp = new Properties();
             resp.setProperty("id", id);
-            resp.setProperty("publicKey",
-                    toHex(rc.relayPair.getPublic().getEncoded(), 0, 0));
+            if (!rc.privateRelay) {
+                resp.setProperty("publicKey",
+                        toHex(rc.relayPair.getPublic().getEncoded(), 0, 0));
+            }
             respondProperties(resp, httpExchange, false);
         }
     }
@@ -638,10 +667,11 @@ public class TeleportaRelay {
      * Abstract shared handler, contains some useful stuff.
      */
     abstract static class AbstractHandler implements HttpHandler {
-        protected TeleCrypt tc = new TeleCrypt();
+        protected final TeleCrypt tc = new TeleCrypt();
         /**
          * Extract query params from URL
          * @param u
+         *          url
          * @return
          *      key-value pairs with provided params
          */
@@ -689,8 +719,11 @@ public class TeleportaRelay {
         /**
          * Respond unencrypted properties to http stream
          * @param props
+         *          filled properties object
          * @param exchange
+         *          HttpExchange instance
          * @param close
+         *          if true - HttpExchange.close() method will be called
          */
         protected void respondProperties(Properties props, HttpExchange exchange, boolean close) {
             try (OutputStream os = exchange.getResponseBody()) {
@@ -764,5 +797,9 @@ public class TeleportaRelay {
         RuntimePortal(String name, String publicKey) {
             super(name, publicKey);
         }
+    }
+    public static void printRelayKey(byte[] data) {
+        System.out.printf("%s|%n", ("|TELEPORTA" + toHex(data,0,0))
+                .replaceAll(".{80}(?=.)", "$0\n"));
     }
 }

@@ -34,13 +34,9 @@ public class Main {
             printHelp();
             return;
         }
-        // do we need to show logo?
-        final boolean showLogo = Boolean.parseBoolean(System.getProperty("showLogo", "true"));
-        if (showLogo) {
-            printLogo(si);
-        }
         // check if debug messages enabled
-        final boolean debugMessages = Boolean.parseBoolean(System.getProperty("appDebug", "false"));
+        final boolean debugMessages = Boolean
+                .parseBoolean(System.getProperty("appDebug", "false"));
         // adjust logging
         if (debugMessages) {
             setDebugLogging();
@@ -52,18 +48,32 @@ public class Main {
             return;
         }
         relayUrl = relayUrl.toLowerCase();
+
+        final boolean relay;
+
         // if there is '-relay' parameter - start Teleporta in 'relay' mode
         if ("-relay".equalsIgnoreCase(relayUrl)) {
-            TeleportaRelay.init();
+            relay = true;
         // if there is an argument that starts with http or https - use it as relay url
         // and start Teleporta in 'portal' mode
         } else if (relayUrl.startsWith("http") || relayUrl.startsWith("https")) {
+            relay = false;
+         // otherwise just prints help and exit
+        } else {
+            printHelp();
+            return;
+        }
+        // do we need to show logo?
+        final boolean showLogo = Boolean.parseBoolean(System.getProperty("showLogo", "true"));
+        if (showLogo) {
+            printLogo(relay,si);
+        }
+        if (relay) {
+            TeleportaRelay.init();
+        } else {
             final boolean enableClipboard =
                     Boolean.parseBoolean(System.getProperty("clipboard", "false"));
             TeleportaClient.init(relayUrl, enableClipboard);
-        // otherwise just prints help and exit
-        } else {
-            printHelp();
         }
     }
     static void printHelp() {
@@ -73,7 +83,7 @@ public class Main {
     }
     private static final String TELE_LOGO
             = "⣿⣿⣿⣿⣿⣿⣿⢟⠫⠓⠚⠉⠙⠓⠫⢻⠿⣟⠿⠭⠩⠛⡻⣿⣿⣿⣿⣿⣿⣿ \n"
-            + "⣿⣿⣿⣿⣿⢟⠕⠁⣠⠴⠒⠋⠉⢉⣉⣛⣛⣲⣤⣀⠔⠒⠛⢒⣋⣹⣛⣿⣿⣿ Teleporta Relay v%s \n"
+            + "⣿⣿⣿⣿⣿⢟⠕⠁⣠⠴⠒⠋⠉⢉⣉⣛⣛⣲⣤⣀⠔⠒⠛⢒⣋⣹⣛⣿⣿⣿ Teleporta %s v%s \n"
             + "⣿⣿⣿⣿⣏⠎⠀⠀⠀⠀⠤⣖⡫⠝⠒⠂⠀⠀⠐⠺⣷⡲⠭⠛⠓⠒⠚⠫⠬⡻ Build: %s, created: %s\n"
             + "⣿⣿⡿⢟⠝⠀⠀⠀⠀⠮⣉⠀⠀⠀⠀⣴⡿⠿⡆⠀⠈⡇⠀⠀⢰⣿⠿⡆⠀⠈ \n"
             + "⣿⠏⠀⠀⠀⠀⠀⠀⠀⠀⠠⡑⢄⠀⠀⠻⠿⠶⠃⠀⢀⡧⢄⡀⠘⠻⠶⠁⠀⣀ \n"
@@ -87,7 +97,9 @@ public class Main {
             + "⠈⠙⠵⣒⠤⠤⣀⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⣔⣮⣶⣿⣿⣿⣿⣿ \n"
             + "⠀⠀⠀⠀⠉⠉⠒⠒⠮⠭⠭⢉⣉⣈⡉⠉⠭⠭⠝⠋⠘⠝⠻⣿⣿⣿⣿⣿⣿⣿ \n"
             + "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣮⡻⣿⣿⣿⣿⣿ \n";
-    static void printLogo(SystemInfo si) {
-        System.out.printf(TELE_LOGO, si.getBuildVersion(), si.getBuildNum(), si.getBuildTime());
+    static void printLogo(boolean relay,SystemInfo si) {
+        System.out.printf(TELE_LOGO,
+                relay? "Relay" : "Portal",
+                si.getBuildVersion(), si.getBuildNum(), si.getBuildTime());
     }
 }
