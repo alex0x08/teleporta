@@ -53,5 +53,5 @@ mvn clean package
 ```
 Final executable `teleporta.cmd` could be found in `target` folder.
 
-If you prefer to use plain old JAR, without all bootstrap magic - just take executable .JAR file from same `target' folder.
+If you prefer to use plain old JAR, without all bootstrap magic - just take executable .JAR file from same `target` folder.
 
