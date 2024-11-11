@@ -156,23 +156,28 @@ public class TeleportaCommons {
      *          if true - also removes specified folder, otherwise - just inner content
      */
     public static void deleteRecursive(File file, boolean removeParent) {
-        if (file.isFile() && !file.delete()) {
-            LOG.warning(String.format("cannot delete file: %s",
-                    file.getAbsolutePath()));
+        if (file.isFile()) {
+            if (!file.delete()) {
+                LOG.warning(String.format("cannot delete file: %s",
+                        file.getAbsolutePath()));
+            }
             return;
         }
         if (!file.isDirectory()) {
+            // could be a link also - skip it
             return;
         }
         final File[] files = file.listFiles();
         // java allows to remove folder only if its empty
-        if (files == null || files.length == 0 && !file.delete()) {
-            LOG.warning(String.format("cannot delete folder: %s",
-                    file.getAbsolutePath()));
+        if ((files == null || files.length == 0)) {
+            if (!file.delete()) {
+                LOG.warning(String.format("cannot delete folder: %s",
+                        file.getAbsolutePath()));
+            }
             return;
         }
         for (File f : files) {
-            deleteRecursive(f, false);
+            deleteRecursive(f, true);
         }
         if (removeParent && !file.delete()) {
             LOG.warning(String.format("cannot delete folder: %s", file.getAbsolutePath()));

@@ -63,6 +63,9 @@ public class TeleportaClient {
     public static void main(String[] args) throws Exception {
         setDebugLogging();
       //  System.setProperty("relayKey","/opt/work/tmp/tele.pub");
+        System.setProperty("useLockFile","true");
+        System.setProperty("dumbWatcher","true");
+
         init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa", true);
     }
     public static void init(String relayUrl, boolean allowClipboard) throws Exception {
@@ -106,6 +109,7 @@ public class TeleportaClient {
         // register on relay
         if (!c.register()) {
             System.err.printf("Cannot register on relay: %s%n", relayUrl);
+            System.exit(1);
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
@@ -544,9 +548,14 @@ public class TeleportaClient {
                     // create target file
                     final File out = new File(f, name);
                     // if it's already exist - delete
-                    if (out.exists() && !out.delete()) {
-                        LOG.warning(String.format("cannot delete existing file : %s",
-                                out.getAbsolutePath()));
+                    if (out.exists() ) {
+                        if (out.isFile() && !out.delete()) {
+                            LOG.warning(String.format("cannot delete existing file : %s",
+                                    out.getAbsolutePath()));
+                        }
+                        if (out.isDirectory()) {
+                            deleteRecursive(out,true);
+                        }
                         continue;
                     }
                     // decrypt AES session key
