@@ -23,16 +23,15 @@ import static java.nio.file.StandardWatchEventKinds.*;
 public class TeleFilesWatch {
     private final static Logger LOG = Logger.getLogger("TC");
     private final ScheduledExecutorService ses;
-    private final TeleportaCommons.BidirectionalMap<WatchKey, Path>
-            keys;
-    private final WatchService ws;
+
+    private final FolderWatcher watcher;
+
     private final Object l = new Object();
     private final Queue<FileEvent> fq = new ConcurrentLinkedQueue<>();
     private final List<FileProcessHandler> ph = new ArrayList<>();
     private volatile boolean running;
-    private final boolean useDumbWatcher,useLockFile;
-    private final Set<Path> paths;
-    private final Set<File> processing,processingAfterUnlock;
+    private final boolean useLockFile;
+    private final Set<File> processingAfterUnlock;
     private final Map<Path,DirState> lockFiles;
 
     /**
@@ -40,7 +39,7 @@ public class TeleFilesWatch {
      */
     public TeleFilesWatch() {
         this.ses = Executors.newScheduledThreadPool(3); //2 tasks + 1 backup
-        useDumbWatcher = Boolean.parseBoolean(System.getProperty("dumbWatcher", "false"));
+        boolean useDumbWatcher = Boolean.parseBoolean(System.getProperty("dumbWatcher", "false"));
         useLockFile = Boolean.parseBoolean(System.getProperty("useLockFile", "false"));
         if (useLockFile) {
             LOG.info("Using lock files, you need to remove 'lock' file manually to trigger uploading");
@@ -51,22 +50,7 @@ public class TeleFilesWatch {
             lockFiles = null;
             processingAfterUnlock = null;
         }
-        if (useDumbWatcher) {
-            ws = null;
-            keys = null;
-            paths = new LinkedHashSet<>();
-            processing = new LinkedHashSet<>();
-        } else {
-            paths = null;
-            processing = null;
-            try {
-                ws = FileSystems.getDefault().newWatchService();
-                keys = new TeleportaCommons.BidirectionalMap<>();
-            } catch (IOException ex) {
-                throw new RuntimeException(String.format("Cannot create WatchService:%s",
-                        ex.getMessage()), ex);
-            }
-        }
+        watcher  = useDumbWatcher ? new DumbFolderWatcher() : new NativeFolderWatcher();
     }
     public void registerHandler(FileProcessHandler fph) {
         ph.add(fph);
@@ -100,12 +84,7 @@ public class TeleFilesWatch {
             }
         }, 3, 3, TimeUnit.SECONDS);
         // this task uses java's WatchService for fs monitoring
-        if (useDumbWatcher) {
-            LOG.warning("Using non-native dumb&slow file watcher.");
-            registerDumbWatcher();
-        } else {
-            registerNativeWatcher();
-        }
+        watcher.start();
     }
     public void unregister(Path dir) {
         // unregister lock, if using 'lock' files
@@ -115,19 +94,8 @@ public class TeleFilesWatch {
             }
         }
         // for 'dumb' watcher, we don't register in WatcherService and use our own list instead.
-        if (useDumbWatcher) {
-            paths.remove(dir);
-            LOG.fine(String.format("unregister: %s", dir));
-            return;
-        }
-        if (!keys.containsValue(dir)) {
-            return;
-        }
-        final WatchKey k = keys.getKey(dir);
-        k.cancel();
-        synchronized (l) {
-            keys.remove(k);
-        }
+        watcher.unregister(dir);
+
     }
     /**
      * Registers new watcher for specified folder
@@ -141,34 +109,7 @@ public class TeleFilesWatch {
                  lockFiles.put(dir, DirState.READY);
             }
         }
-        // register (add) path to custom list
-        if (useDumbWatcher && !paths.contains(dir)) {
-            paths.add(dir);
-            LOG.fine(String.format("register: %s", dir));
-            return;
-        }
-        // for normal WatcherService
-        if (keys.containsValue(dir)) {
-            LOG.warning(String.format("cannot register key: %s  - already exists", dir));
-            return;
-        }
-        try {
-            final WatchKey key = dir.register(ws, ENTRY_CREATE,
-                    ENTRY_DELETE);
-            if (LOG.isLoggable(Level.FINE)) {
-                final Path prev = keys.get(key);
-                if (prev == null) {
-                    LOG.fine(String.format("register: %s", dir));
-                } else if (!dir.equals(prev)) {
-                    LOG.fine(String.format("update: %s -> %s", prev, dir));
-                }
-            }
-            synchronized (l) {
-                keys.put(key, dir);
-            }
-        } catch (IOException ex) {
-            throw new RuntimeException(ex);
-        }
+        watcher.register(dir);
     }
     public interface FileProcessHandler {
         void handle(List<File> files, String receiver);
@@ -180,118 +121,6 @@ public class TeleFilesWatch {
             this.file = f;
             this.receiver = r;
         }
-    }
-    private void registerNativeWatcher() {
-        /*
-         * Linux's implementation of WatchService based on inotify.
-         * In summary a background thread polls inotify plus a socket used for
-         * the wakeup mechanism. Requests to add or remove a watch, or close the
-         * watch service, cause the thread to wake up and process the request.
-         * Events are processed by the thread which causes it to signal/queue
-         * the corresponding watch keys.
-         */
-        // wait for key to be signalled
-        // ignore
-        // Context for directory entry event is the file name of entry
-        // ignore non-existent ( possibly deleted before trigger happens )
-        // print out event
-        ses.submit(() -> {
-            for (; ; ) {
-                // wait for key to be signalled
-                final WatchKey key;
-                try {
-                    key = ws.take();
-                } catch (InterruptedException x) {
-                    // ignore
-                    return;
-                }
-                final Path dir = keys.get(key);
-                if (dir == null) {
-                    LOG.warning("WatchKey not recognized!");
-                    continue;
-                }
-                for (WatchEvent<?> event : key.pollEvents()) {
-                    final WatchEvent.Kind<?> kind = event.kind();
-                    if (kind == OVERFLOW) {
-                        continue;
-                    }
-                    // Context for directory entry event is the file name of entry
-                    @SuppressWarnings("unchecked") final WatchEvent<Path> ev = (WatchEvent<Path>) event;
-                    final Path name = ev.context(),
-                            child = dir.resolve(name);
-                    if (kind == ENTRY_DELETE) {
-                        // we don't process any other removals, only lock file!
-                        if (!useLockFile) {
-                            continue;
-                        }
-                        final File f = child.toFile();
-                        // means 'lock' file removed
-                        if ("lock".equals(f.getName())) {
-                            lockFiles.put(dir,DirState.PROCESSING);
-                            if (LOG.isLoggable(Level.FINE)) {
-                                LOG.fine(String.format("Lock file removed, trigger uploading: %s: %s: %s",
-                                        event.kind().name(), child, name));
-                            }
-                        }
-                    } else if (kind == ENTRY_CREATE) {
-                        // don't react on events till user removes the 'lock' file
-                        if (useLockFile && lockFiles.containsKey(dir)
-                                && lockFiles.get(dir) != DirState.READY) {
-                            if (LOG.isLoggable(Level.FINE)) {
-                                LOG.fine(String.format("Folder is locked - no processing event %s: %s: %s",
-                                        event.kind().name(), child, name));
-                            }
-                            continue;
-                        }
-                        final File f = child.toFile();
-                        if (!f.exists() || !f.canRead()) {
-                            // ignore non-existent ( possibly deleted before trigger happens )
-                            continue;
-                        }
-                        if (!child.getParent().toFile().exists()) {
-                            LOG.warning(String.format("parent deleted: %s",
-                                    child.getParent()));
-                            // ignore event if parent folder was somehow removed
-                            continue;
-                        }
-                        // when using 'lock' file, on each CREATE event
-                        // we check for 'lock' file, if not exist - create one
-                        // Till this file
-                        if (useLockFile) {
-                            final File lock = new File(child.getParent().toFile(),"lock");
-                            try {
-                                if (!lock.createNewFile()) {
-                                    LOG.warning(String.format("Cannot create lock file: %s",
-                                            lock.getAbsolutePath()));
-                                } else {
-                                   lockFiles.put(dir,DirState.LOCKED);
-                                    if (LOG.isLoggable(Level.FINE)) {
-                                        LOG.fine(String.format("Created lock file %s",
-                                                lock.getAbsolutePath()));
-                                    }
-                                }
-                            } catch (IOException e) {
-                                LOG.log(Level.WARNING, e.getMessage(), e);
-                            }
-                            continue;
-                        }
-
-                        // ignore packed folders - in process
-                        if (f.getName().endsWith(".tmpzip")) {
-                            continue;
-                        }
-                        // print out event
-                        if (LOG.isLoggable(Level.FINE)) {
-                            LOG.fine(String.format("%s: %s: %s",
-                                    event.kind().name(), child, name));
-                        }
-                        fq.add(new FileEvent(child.toFile(),
-                                child.getParent().toFile().getName()));
-                    }
-                }
-                key.reset();
-            }
-        });
     }
 
     /**
@@ -351,102 +180,6 @@ public class TeleFilesWatch {
             }
         }, 3, 3, TimeUnit.SECONDS);
     }
-
-    /**
-     * This registers the 'dumb' version of folder monitoring, which does not rely on WatcherService
-     */
-    private void registerDumbWatcher() {
-        ses.scheduleAtFixedRate(() -> {
-            // cleanup processing set
-            processing.removeIf(f -> !f.exists());
-            for (Path p : paths) {
-                // check for 'lock' file, if file deleted - trigger uploading
-                if (useLockFile && lockFiles.containsKey(p)
-                        && lockFiles.get(p) == DirState.LOCKED) {
-                    final File lock = new File(p.toFile(),"lock");
-                    if (!lock.exists()) {
-                        lockFiles.put(p,DirState.PROCESSING);
-                        if (LOG.isLoggable(Level.FINE)) {
-                            LOG.fine(String.format("Lock file removed, trigger uploading: %s",
-                                    p));
-                        }
-                    }
-                    continue;
-                }
-                // process only first 1000 files at once
-                try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(p)) {
-                    int fileCounter = 0;
-                    for (Path e : dirStream) {
-                        if (fileCounter > 1000) {
-                            break;
-                        }
-                        final File f = e.toFile();
-                        if (processing.contains(f)) {
-                            continue;
-                        }
-                        if (useLockFile && lockFiles.containsKey(p)
-                                && lockFiles.get(p) != DirState.READY) {
-                            if (LOG.isLoggable(Level.FINE)) {
-                                LOG.fine(String.format("Folder is locked - no processing event %s: %s",
-                                        p, f.getName()));
-                            }
-                            break;
-                        }
-                        // ignore packed folders - in process
-                        if (f.getName().endsWith(".tmpzip")) {
-                            continue;
-                        }
-                        // ignore caught 'folder archive' during creation process
-                        if (f.isDirectory()) {
-                            File processingZip = new File(f.getParentFile(),f.getName()+".tmpzip");
-                            if (processingZip.exists()) {
-                                continue;
-                            }
-                        }
-                        if (!isAcceptable(f)) {
-                            // ignore non-existent or non-readable
-                            // ( possibly deleted before trigger happens )
-                            continue;
-                        }
-                        if ( useLockFile) {
-                            if (LOG.isLoggable(Level.FINE)) {
-                                LOG.fine(String.format("Locking on %s",
-                                        f.getAbsolutePath()));
-                            }
-                            final File lock = new File(p.toFile(),"lock");
-                            try {
-                                if (!lock.createNewFile()) {
-                                    LOG.warning(String.format("Cannot create lock file: %s",
-                                            lock.getAbsolutePath()));
-                                } else {
-                                    lockFiles.put(p,DirState.LOCKED);
-                                    if (LOG.isLoggable(Level.FINE)) {
-                                        LOG.fine(String.format("Created lock file %s",
-                                                lock.getAbsolutePath()));
-                                    }
-                                }
-                            } catch (IOException ee) {
-                                LOG.log(Level.WARNING, ee.getMessage(), ee);
-                            }
-                            break;
-                        }
-                        // print out event
-                        if (LOG.isLoggable(Level.FINE)) {
-                            LOG.fine(String.format("adding %s", f.getName()));
-                        }
-                        synchronized (l) {
-                            processing.add(f);
-                        }
-                        fq.add(new FileEvent(f,
-                                f.getParentFile().getName()));
-                        fileCounter++;
-                    }
-                } catch (Exception e) {
-                    LOG.log(Level.WARNING, e.getMessage(), e);
-                }
-            }
-        }, 3, 3, TimeUnit.SECONDS);
-    }
     /**
      * Checks if file or directory is acceptable to transfer
      * @param f
@@ -486,5 +219,294 @@ public class TeleFilesWatch {
         LOCKED, // folder is locked, the 'lock' file has been created
         PROCESSING, // there is background file uploading files to relay, 'lock' file is removed
         READY // folder is ready for process, has no files and no 'lock' file
+    }
+
+    interface FolderWatcher {
+        void register(Path dir);
+        void unregister(Path dir);
+        void start();
+    }
+
+    /**
+     * This registers the 'dumb' version of folder monitoring, which does not rely on WatcherService
+     */
+    class NativeFolderWatcher implements FolderWatcher {
+        private final WatchService ws;
+        private final TeleportaCommons.BidirectionalMap<WatchKey, Path>
+                keys = new TeleportaCommons.BidirectionalMap<>();
+        NativeFolderWatcher() {
+            try {
+                ws = FileSystems.getDefault().newWatchService();
+            } catch (IOException ex) {
+                throw new RuntimeException(String.format("Cannot create WatchService:%s",
+                        ex.getMessage()), ex);
+            }
+        }
+
+        @Override
+        public void register(Path dir) {
+            // for normal WatcherService
+            if (keys.containsValue(dir)) {
+                LOG.warning(String.format("cannot register key: %s  - already exists", dir));
+                return;
+            }
+            try {
+                final WatchKey key = dir.register(ws, ENTRY_CREATE,
+                        ENTRY_DELETE);
+                if (LOG.isLoggable(Level.FINE)) {
+                    final Path prev = keys.get(key);
+                    if (prev == null) {
+                        LOG.fine(String.format("register: %s", dir));
+                    } else if (!dir.equals(prev)) {
+                        LOG.fine(String.format("update: %s -> %s", prev, dir));
+                    }
+                }
+                synchronized (l) {
+                    keys.put(key, dir);
+                }
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+
+        @Override
+        public void unregister(Path dir) {
+            if (!keys.containsValue(dir)) {
+                return;
+            }
+            final WatchKey k = keys.getKey(dir);
+            k.cancel();
+            synchronized (l) {
+                keys.remove(k);
+            }
+        }
+        @Override
+        public void start() {
+            /*
+             * Linux's implementation of WatchService based on inotify.
+             * In summary a background thread polls inotify plus a socket used for
+             * the wakeup mechanism. Requests to add or remove a watch, or close the
+             * watch service, cause the thread to wake up and process the request.
+             * Events are processed by the thread which causes it to signal/queue
+             * the corresponding watch keys.
+             */
+            // wait for key to be signalled
+            // ignore
+            // Context for directory entry event is the file name of entry
+            // ignore non-existent ( possibly deleted before trigger happens )
+            // print out event
+            ses.submit(() -> {
+                for (; ; ) {
+                    // wait for key to be signalled
+                    final WatchKey key;
+                    try {
+                        key = ws.take();
+                    } catch (InterruptedException x) {
+                        // ignore
+                        return;
+                    }
+                    final Path dir = keys.get(key);
+                    if (dir == null) {
+                        LOG.warning("WatchKey not recognized!");
+                        continue;
+                    }
+                    for (WatchEvent<?> event : key.pollEvents()) {
+                        final WatchEvent.Kind<?> kind = event.kind();
+                        if (kind == OVERFLOW) {
+                            continue;
+                        }
+                        // Context for directory entry event is the file name of entry
+                        @SuppressWarnings("unchecked") final WatchEvent<Path> ev = (WatchEvent<Path>) event;
+                        final Path name = ev.context(),
+                                child = dir.resolve(name);
+                        if (kind == ENTRY_DELETE) {
+                            // we don't process any other removals, only lock file!
+                            if (!useLockFile) {
+                                continue;
+                            }
+                            final File f = child.toFile();
+                            // means 'lock' file removed
+                            if ("lock".equals(f.getName())) {
+                                lockFiles.put(dir,DirState.PROCESSING);
+                                if (LOG.isLoggable(Level.FINE)) {
+                                    LOG.fine(String.format("Lock file removed, trigger uploading: %s: %s: %s",
+                                            event.kind().name(), child, name));
+                                }
+                            }
+                        } else if (kind == ENTRY_CREATE) {
+                            // don't react on events till user removes the 'lock' file
+                            if (useLockFile && lockFiles.containsKey(dir)
+                                    && lockFiles.get(dir) != DirState.READY) {
+                                if (LOG.isLoggable(Level.FINE)) {
+                                    LOG.fine(String.format("Folder is locked - no processing event %s: %s: %s",
+                                            event.kind().name(), child, name));
+                                }
+                                continue;
+                            }
+                            final File f = child.toFile();
+                            if (!f.exists() || !f.canRead()) {
+                                // ignore non-existent ( possibly deleted before trigger happens )
+                                continue;
+                            }
+                            if (!child.getParent().toFile().exists()) {
+                                LOG.warning(String.format("parent deleted: %s",
+                                        child.getParent()));
+                                // ignore event if parent folder was somehow removed
+                                continue;
+                            }
+                            // when using 'lock' file, on each CREATE event
+                            // we check for 'lock' file, if not exist - create one
+                            // Till this file
+                            if (useLockFile) {
+                                final File lock = new File(child.getParent().toFile(),"lock");
+                                try {
+                                    if (!lock.createNewFile()) {
+                                        LOG.warning(String.format("Cannot create lock file: %s",
+                                                lock.getAbsolutePath()));
+                                    } else {
+                                        lockFiles.put(dir,DirState.LOCKED);
+                                        if (LOG.isLoggable(Level.FINE)) {
+                                            LOG.fine(String.format("Created lock file %s",
+                                                    lock.getAbsolutePath()));
+                                        }
+                                    }
+                                } catch (IOException e) {
+                                    LOG.log(Level.WARNING, e.getMessage(), e);
+                                }
+                                continue;
+                            }
+
+                            // ignore packed folders - in process
+                            if (f.getName().endsWith(".tmpzip")) {
+                                continue;
+                            }
+                            // print out event
+                            if (LOG.isLoggable(Level.FINE)) {
+                                LOG.fine(String.format("%s: %s: %s",
+                                        event.kind().name(), child, name));
+                            }
+                            fq.add(new FileEvent(child.toFile(),
+                                    child.getParent().toFile().getName()));
+                        }
+                    }
+                    key.reset();
+                }
+            });
+        }
+    }
+
+    class DumbFolderWatcher implements FolderWatcher {
+        private final Set<Path> paths  = new LinkedHashSet<>();
+        private final Set<File> processing = new LinkedHashSet<>();
+        private final Object l = new Object();
+        @Override
+        public void register(Path dir) {
+            // register (add) path to custom list
+            if (!paths.contains(dir)) {
+                paths.add(dir);
+                LOG.fine(String.format("register: %s", dir));
+            }
+        }
+        @Override
+        public void unregister(Path dir) {
+            // for 'dumb' watcher, we don't register in WatcherService and use our own list instead.
+            paths.remove(dir);
+            LOG.fine(String.format("unregister: %s", dir));
+        }
+        @Override
+        public void start() {
+            LOG.warning("Using non-native dumb&slow file watcher.");
+            ses.scheduleAtFixedRate(() -> {
+                // cleanup processing set
+                processing.removeIf(f -> !f.exists());
+                for (Path p : paths) {
+                    // check for 'lock' file, if file deleted - trigger uploading
+                    if (useLockFile && lockFiles!=null && lockFiles.containsKey(p)
+                            && lockFiles.get(p) == DirState.LOCKED) {
+                        final File lock = new File(p.toFile(),"lock");
+                        if (!lock.exists()) {
+                            lockFiles.put(p,DirState.PROCESSING);
+                            if (LOG.isLoggable(Level.FINE)) {
+                                LOG.fine(String.format("Lock file removed, trigger uploading: %s",
+                                        p));
+                            }
+                        }
+                        continue;
+                    }
+                    // process only first 1000 files at once
+                    try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(p)) {
+                        int fileCounter = 0;
+                        for (Path e : dirStream) {
+                            if (fileCounter > 1000) {
+                                break;
+                            }
+                            final File f = e.toFile();
+                            if (processing.contains(f)) {
+                                continue;
+                            }
+                            if (useLockFile && lockFiles!=null && lockFiles.containsKey(p)
+                                    && lockFiles.get(p) != DirState.READY) {
+                                if (LOG.isLoggable(Level.FINE)) {
+                                    LOG.fine(String.format("Folder is locked - no processing event %s: %s",
+                                            p, f.getName()));
+                                }
+                                break;
+                            }
+                            // ignore packed folders - in process
+                            if (f.getName().endsWith(".tmpzip")) {
+                                continue;
+                            }
+                            // ignore caught 'folder archive' during creation process
+                            if (f.isDirectory()) {
+                                final File processingZip = new File(f.getParentFile(),
+                                        f.getName()+".tmpzip");
+                                if (processingZip.exists()) {
+                                    continue;
+                                }
+                            }
+                            if (!isAcceptable(f)) {
+                                // ignore non-existent or non-readable
+                                // ( possibly deleted before trigger happens )
+                                continue;
+                            }
+                            if ( useLockFile && lockFiles!=null) {
+                                if (LOG.isLoggable(Level.FINE)) {
+                                    LOG.fine(String.format("Locking on %s",
+                                            f.getAbsolutePath()));
+                                }
+                                final File lock = new File(p.toFile(),"lock");
+                                try {
+                                    if (!lock.createNewFile()) {
+                                        LOG.warning(String.format("Cannot create lock file: %s",
+                                                lock.getAbsolutePath()));
+                                    } else {
+                                        lockFiles.put(p,DirState.LOCKED);
+                                        if (LOG.isLoggable(Level.FINE)) {
+                                            LOG.fine(String.format("Created lock file %s",
+                                                    lock.getAbsolutePath()));
+                                        }
+                                    }
+                                } catch (IOException ee) {
+                                    LOG.log(Level.WARNING, ee.getMessage(), ee);
+                                }
+                                break;
+                            }
+                            // print out event
+                            if (LOG.isLoggable(Level.FINE)) {
+                                LOG.fine(String.format("adding %s", f.getName()));
+                            }
+                            synchronized (l) {
+                                processing.add(f);
+                            }
+                            fq.add(new FileEvent(f,
+                                    f.getParentFile().getName()));
+                            fileCounter++;
+                        }
+                    } catch (Exception e) {
+                        LOG.log(Level.WARNING, e.getMessage(), e);
+                    }
+                }
+            }, 3, 3, TimeUnit.SECONDS);
+        }
     }
 }

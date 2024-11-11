@@ -39,7 +39,7 @@ public class SystemInfo {
         return buildNum;
     }
 
-    public synchronized void load() {
+    public void load() {
         if (wasLoaded) {
             throw new RuntimeException("Already initalized");
         }

@@ -1,9 +1,9 @@
 rem(){ :;};rem '
 @goto b
-';echo -n "0";
+';echo -n "a";
 
 if [ -z "$BASH" ]; then 
-echo -n "1"
+echo -n "b"
 exec bash "$0" "$@"
 exit
 fi
@@ -22,18 +22,18 @@ function get_realpath {
 }
 
 try_download_java() {
-echo -n "3"
+echo -n "c"
 
 UNPACKED_JRE=~/.jre/jre
 if [[ -f "$UNPACKED_JRE/bin/java" ]]; then
-    echo -n ".1"
+    echo -n "d"
     _JRE="$UNPACKED_JRE/bin/java"
     return 0
 fi
 
 # Detect the platform (similar to $OSTYPE)
-OS="`uname`"
-ARCH="`uname -m`"
+OS="$(uname)"
+ARCH="$(uname -m)"
 # select correct path segments based on CPU architecture and OS
 case $ARCH in
    'x86_64')
@@ -56,10 +56,10 @@ case $OS in
      ;;
 esac
 
-
-echo "3.2 Downloading for OS: $OS and arch: $ARCH"
+echo -n "e"
+#echo "3.2 Downloading for OS: $OS and arch: $ARCH"
 URL="https://nexus.nuiton.org/nexus/content/repositories/jvm/com/oracle/jre/1.8.121/jre-1.8.121-$OS-$ARCH.zip"
-echo "Full url: $URL"
+#echo "Full url: $URL"
 
 CODE=$(curl -L -w '%{http_code}' -o /tmp/jre.zip -C - $URL)
 if [[ "$CODE" =~ ^2 ]]; then
@@ -69,9 +69,9 @@ if [[ "$CODE" =~ ^2 ]]; then
     _JRE="$UNPACKED_JRE/bin/java"
     return 0
 elif [[ "$CODE" = 404 ]]; then
-    exit_error "3.3 Unable to download JRE from $URL"
+    exit_error "Unable to download JRE from $URL"
 else
-    exit_error "3.4 ERROR: server returned HTTP code $CODE"
+    exit_error "Error downloading JRE: server returned HTTP code $CODE"
 fi
 }
 
@@ -89,7 +89,8 @@ jdk_version() {
   fi
   local IFS=$'\n'
   # remove \r for Cygwin
-  local lines=$("$java_cmd" -Xms32M -Xmx32M -version 2>&1 | tr '\r' '\n')
+  local lines
+  lines=$("$java_cmd" -Xms32M -Xmx32M -version 2>&1 | tr '\r' '\n')
   if [[ -z $java_cmd ]]
   then
     result=no_java
@@ -97,7 +98,8 @@ jdk_version() {
     for line in $lines; do
       if [[ (-z $result) && ($line = *"version \""*) ]]
       then
-        local ver=$(echo $line | sed -e 's/.*version "\(.*\)"\(.*\)/\1/; 1q')
+        local ver
+        ver=$(echo $line | sed -e 's/.*version "\(.*\)"\(.*\)/\1/; 1q')
         # on macOS, sed doesn't support '?'
         if [[ $ver = "1."* ]]
         then
@@ -111,25 +113,24 @@ jdk_version() {
   echo "$result"
 }
 
-
-echo -n "1"
-if type -p java; then
-    echo -n ".1"
+echo -n "f"
+if type -p java >/dev/null; then
+    echo -n "g"
     _JRE=java
 elif [[ -n $JAVA_HOME ]] && [[ -x "$JAVA_HOME/bin/java" ]];  then
-    echo -n ".2"
+    echo -n "h"
     _JRE="$JAVA_HOME/bin/java"
 else
-    echo -n ".3"
+    echo -n "i"
 fi
 
 v="$(jdk_version)"
-echo "2. Detected Java version: $v"
+#echo "2. Detected Java version: $v"
 if [[ $v -lt 8 ]]
 then
-    echo "2.1 Found unsupported version: $v"
+    #echo "2.1 Found unsupported version: $v"
     try_download_java
-    echo "2.2 Using JRE: $_JRE"
+    #echo "2.2 Using JRE: $_JRE"
 fi
 
 self=$(get_realpath "$0")

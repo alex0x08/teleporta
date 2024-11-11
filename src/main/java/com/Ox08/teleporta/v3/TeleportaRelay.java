@@ -480,7 +480,6 @@ public class TeleportaRelay {
             if (p.needLoadClipboard) {
                 props.setProperty("updateClipboard", "true");
             }
-
             // if there were no files for that portal (could be a new one) - respond current
             if (!toFolder.exists() || !toFolder.isDirectory()) {
                 if (props.isEmpty()) {
