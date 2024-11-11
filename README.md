@@ -5,7 +5,7 @@ This is our internal tool, dedicated to fast&secure file exchange in a team.
 
 Article with detailed project description (Russian): [https://blog.0x08.ru/teleporta](https://blog.0x08.ru/teleporta)
 
-# How it works
+# How it work
 Techincally Teleporta has 2 different applications combined in one and enabled by command line arguments.
 
 There are two work modes: 'relay' (server) and 'portal' (client).  
@@ -60,8 +60,63 @@ Let's say portal 'Bob' wants to transfer file thought relay to portal 'Alice'. B
 When received, Alice decrypts file using own private key.
 
 
-The community version uses weak algorihms: 2048bit RSA and 128bit AES, fair enough for normal users but easy breakable by any 'special forces', so please don't try to use this tool for anything bad.
+The community version uses weak algorihms: 2048bit RSA and 128bit AES, fair enough for normal users, but easy breakable by any 'special forces', so please don't try to use this tool for anything illegal.
 
+# Additional options
+There are additional settings, could be passed to Teleporta by commonly used -Dparameter=value mechanism.
+
+Enable debug output:
+```
+-DappDebug=true
+```
+Enable 'programmatic' file watcher instead of native:
+```
+-DdumbWatcher=true
+```
+Useful for old or network filesystems, like on Windows 98 as shown upper.
+
+Don't generate seed and use static instead:
+```
+-Dseed=testseed
+```
+If provided, context path will match provided seed, like: `http://majestic12:8989/testseed`
+
+Allow portal update even if its already registered:
+```
+-DallowPortalNameUpdate=true
+```
+
+Provide own portal name instead of hostname:
+```
+-DportalName=samplePortal
+```
+
+Display startup logo:
+```
+-DshowLogo=false
+```
+
+Create link on Desktop to Teleporta's folders:  
+```
+-DcreateDesktopLink=false
+```
+Specify custom storage path:
+```
+-DappHome=/full/path/to/folder
+```
+
+Specify listening port (8989 by default):
+```
+-DappPort=9000
+```
+
+# Technical details
+This project passed long way, full of pain and issues, what you see there is 3rd *Java* version and each version has been rewritten from scratch. 
+There were also Teleporta versions in C++ and Golang, which not survived: C++ has too many standards nowadays and Golang has serious issues with legacy environments.
+
+To be more specific, we faced that using C++ 11 as most widely used modern C++ version requires us to use and support weird hacks like [this](https://github.com/gulrak/filesystem) if we going to provide long support.
+More recent C++ 17 and especially 20 are not well supported in common compilers, and it's better to use older compiler, if you need stability on wide range of environments.
+Same story for Golang: it sucks on legacy, even 10 years old Linux/Windows is a problem.
 
 # How to build
 
