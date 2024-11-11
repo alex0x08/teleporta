@@ -1,6 +1,11 @@
 package com.Ox08.teleporta.v3;
+import java.io.File;
+import java.io.FileInputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
+
 import static com.Ox08.teleporta.v3.TeleportaCommons.setDebugLogging;
 /**
  * Start class for both client and server sides.
@@ -13,8 +18,28 @@ public class Main {
         // load build info
         final SystemInfo si = new SystemInfo();
         si.load();
-        // if no arguments provided - just print help
-        if (args.length == 0) {
+        // try to load config file first (if exist)
+        final File configFile = new File("teleporta.properties");
+        boolean configLoaded = false;
+        if (configFile.exists() && configFile.isFile() && configFile.canRead()) {
+            final Properties props = new Properties();
+            try (FileInputStream in = new FileInputStream(configFile)) {
+                props.load(in);
+                // note: don't use System.setProperties(props) here !
+                // it will destroy (by overwrite) whole env
+                for (Object k:props.keySet()) {
+                    final Object v = props.get(k);
+                    // set only non-defined properties
+                    if (System.getProperty(k.toString(),null) == null) {
+                        System.setProperty(k.toString(),v.toString());
+                    }
+                }
+                configLoaded = true;
+            }
+        }
+
+        // if no arguments provided and no config found - just print help
+        if (args.length == 0 && !configLoaded) {
             printHelp();
             return;
         }
@@ -30,7 +55,7 @@ public class Main {
             cleaned.add(a);
         }
         // if there are no required params provided - print help and exit
-        if (cleaned.isEmpty()) {
+        if (cleaned.isEmpty() && ! configLoaded) {
             printHelp();
             return;
         }
@@ -42,8 +67,9 @@ public class Main {
             setDebugLogging();
         }
         // get relay URL
-        String relayUrl = cleaned.get(0);
-        if (relayUrl.isEmpty()) {
+        String relayUrl = cleaned.isEmpty() ?
+                System.getProperty("relayUrl",null) : cleaned.get(0);
+        if (relayUrl == null || relayUrl.isEmpty()) {
             printHelp();
             return;
         }
@@ -64,7 +90,8 @@ public class Main {
             return;
         }
         // do we need to show logo?
-        final boolean showLogo = Boolean.parseBoolean(System.getProperty("showLogo", "true"));
+        final boolean showLogo = Boolean.parseBoolean(
+                System.getProperty("showLogo", "true"));
         if (showLogo) {
             printLogo(relay,si);
         }

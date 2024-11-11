@@ -1,18 +1,18 @@
 package com.Ox08.teleporta.v3;
+import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.URLDecoder;
+import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.CodeSource;
 import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.*;
@@ -21,6 +21,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
 import static com.Ox08.teleporta.v3.TeleportaCommons.*;
 /**
  * Teleporta Relay
@@ -57,28 +60,43 @@ public class TeleportaRelay {
         final int port = Integer.parseInt(System.getProperty("appPort", "8989"));
         final File teleportaHome = checkCreateHomeFolder("teleporta-relay");
         deleteRecursive(teleportaHome, false);
+
+        // We need to detect own jar location and pass full path as global variable to 'RespondSelfHandler'
+        final CodeSource codeSource = TeleportaRelay.class.getProtectionDomain().getCodeSource();
+        final File jarFile;
+        try {
+            jarFile = new File(codeSource.getLocation().toURI());
+        } catch (URISyntaxException ex) {
+            System.err.printf("Cannot detect self location: %s%n", ex.getMessage());
+            ex.printStackTrace(System.err);
+            System.exit(1);
+            return;
+        }
+        System.setProperty("TELEPORTA_APP_JAR", jarFile.getAbsolutePath());
+
         final HttpServer server = HttpServer.create(new InetSocketAddress(port), 50);
         final TeleCrypt tc = new TeleCrypt();
         final KeyPair rkp = tc.generateKeys();
         final boolean privateRelay =
                 Boolean.parseBoolean(System.getProperty("privateRelay", "false"));
-
+        // print relay key if 'private mode' enabled, allows user to copy it
         if (privateRelay) {
             System.out.println("Relay key: ");
             printRelayKey(rkp.getPublic().getEncoded());
         }
-
+        // build runtime context
         final RelayRuntimeContext rc = new RelayRuntimeContext(teleportaHome, rkp ,privateRelay);
         // background task to remove expired portals
         ses.scheduleAtFixedRate(() -> {
             final Set<String> expired = new HashSet<>();
             for (String k : rc.portals.keySet()) {
                 final RuntimePortal p = rc.portals.get(k);
-                // check for expiration
+                // check for other portals expiration
                 if (System.currentTimeMillis() - p.lastSeen > 60_000) {
                     expired.add(k);
                 }
             }
+            // remove local folders for expired portals in 'out' folder
             if (!expired.isEmpty()) {
                 for (String k : expired) {
                     final RegisteredPortal p = rc.portals.remove(k);
@@ -95,7 +113,8 @@ public class TeleportaRelay {
                     p.needReloadPortals = true;
                 }
             }
-            // second stage: check expiration on each file on relay
+            // second stage: check expiration on each file in relay store,
+            //  which not yet delivered
             for (String k : rc.portalNames.keySet()) {
                 final File relayParent = new File(rc.storageDir, k);
                 if (!relayParent.exists() || !relayParent.isDirectory()) {
@@ -109,6 +128,7 @@ public class TeleportaRelay {
                         if (fileCounter > 1000) {
                             break;
                         }
+                        // ignore files not related to Teleporta
                         if (!e.toString().toLowerCase().endsWith(".dat")) {
                             continue;
                         }
@@ -132,6 +152,7 @@ public class TeleportaRelay {
                 }
             }
         }, 120, 60, TimeUnit.SECONDS);
+        // Use defined or generate seed
         final String seed = System.getProperty("seed", genSeed());
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine(String.format("seed: %s", seed));
@@ -153,8 +174,17 @@ public class TeleportaRelay {
                 .setHandler(new RegisterHandler(rc));
         server.createContext(generateUrl(seed, "get-portals"))
                 .setHandler(new GetPortalsHandler(rc));
-        LOG.info(String.format("Teleporta Relay started: http://%s:%d/%s. Press CTRL-C to stop",
-                InetAddress.getLocalHost().getHostName(), port, seed));
+        final boolean selfDownload = Boolean
+                .parseBoolean(System.getProperty("selfDownload", "true"));
+        if (selfDownload) {
+            LOG.info("Self downloads allowed");
+            server.createContext("/" + seed)
+                    .setHandler(new RespondSelfHandler());
+        }
+        LOG.info(String.format("%s Teleporta Relay started: http://%s:%d/%s. Press CTRL-C to stop",
+                rc.privateRelay ? "Private" : "Public",
+                InetAddress.getLocalHost().getHostName(),
+                port, seed));
         // starts Teleporta in relay mode
         server.start();
     }
@@ -180,9 +210,87 @@ public class TeleportaRelay {
             this.privateRelay = privateRelay;
         }
     }
+
     /**
-     * A handler to respond registered portals
+     *   This handler allows to download Teleporta distribution, generated from runtime.
      */
+    static class RespondSelfHandler extends AbstractHandler {
+        @Override
+        public void handle(HttpExchange httpExchange) throws IOException {
+            final Map<String, String> params = getQueryParams(httpExchange.getRequestURI());
+            final String dl = params.isEmpty() ?  null : params.get("dl");
+            if (dl == null) {
+                httpExchange.sendResponseHeaders(200,INDEX.length);
+                // respond static page with javascript to detect self domain
+                httpExchange.getResponseHeaders().add("Content-Type","text/html");
+                try (OutputStream out = httpExchange.getResponseBody()) {
+                    out.write(INDEX);
+                    out.flush();
+                }
+                return;
+            }
+
+            // get self domain name
+            final String self = params.get("self");
+
+            // get self jar location
+            final String jarF = System.getProperty("TELEPORTA_APP_JAR");
+            if (jarF == null || jarF.isEmpty()) {
+                LOG.warning("self jar not found, TELEPORTA_APP_JAR is null ");
+                respondAndClose(400,httpExchange);
+                return;
+            }
+            final File jarFile = new File(jarF);
+            if (!jarFile.exists() || !jarFile.isFile() || !jarFile.canRead()) {
+                    LOG.warning(String.format("self file not found or not readable: '%s'", jarFile));
+                respondAndClose(400,httpExchange);
+                return;
+            }
+
+            final Headers headers = httpExchange.getResponseHeaders();
+            headers.set("Content-Type","application/octet-stream");
+            // build .zip distribution and respond as stream
+            headers.set("Content-Disposition", "attachment;filename=teleporta.zip");
+            httpExchange.sendResponseHeaders(200,0);
+
+            final byte[] buffer = new byte[4096];
+            try (ZipOutputStream zout = new ZipOutputStream(httpExchange.getResponseBody());
+                 FileInputStream in = new FileInputStream(jarFile)) {
+                zout.putNextEntry(new ZipEntry("/teleporta/" ));
+                zout.closeEntry();
+                zout.putNextEntry(new ZipEntry("/teleporta/" + jarFile.getName()));
+                for (int n = in.read(buffer); n >= 0; n = in.read(buffer))
+                    zout.write(buffer, 0, n);
+                zout.closeEntry();
+                // if we're able to detect self domain - add connection string
+                if (self != null) {
+                    zout.putNextEntry(new ZipEntry("/teleporta/teleporta.properties"));
+                    final Properties p = new Properties();
+                    p.setProperty("relayUrl", self);
+                    p.store(zout, "Initial Teleporta Server settings");
+                    zout.closeEntry();
+                }
+                zout.finish();
+            }
+        }
+
+        private static final byte[] INDEX = ("<!DOCTYPE html>\n" +
+                "<html>\n" +
+                "    <head>\n" +
+                "        <meta charset=\"UTF-8\">\n" +
+                "        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "    </head>\n" +
+                "    <body>\n" +
+                "        <script type=\"text/javascript\">\n" +
+                "            window.location.href =  window.location.href + '?dl=1&self=' + window.location.href ;\n" +
+                "        </script>    \n" +
+                "    </body>\n" +
+                "</html>\n").getBytes(StandardCharsets.UTF_8);
+    }
+
+            /**
+             * A handler to respond registered portals
+             */
     static class GetPortalsHandler extends AbstractHandler {
         private final RelayRuntimeContext rc;
         GetPortalsHandler(RelayRuntimeContext rc) {
@@ -238,7 +346,8 @@ public class TeleportaRelay {
         private final boolean allowPortalNamesUpdate; // if set - we allow to replace registered portals
         RegisterHandler(RelayRuntimeContext rc) {
             this.rc = rc;
-            allowPortalNamesUpdate = Boolean.parseBoolean(System.getProperty("allowPortalNameUpdate", "false"));
+            allowPortalNamesUpdate = Boolean.parseBoolean(
+                    System.getProperty("allowPortalNameUpdate", "false"));
         }
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
@@ -676,7 +785,7 @@ public class TeleportaRelay {
          *      key-value pairs with provided params
          */
         Map<String, String> getQueryParams(URI u) {
-            if (u == null) {
+            if (u == null || u.getQuery() == null) {
                 return Collections.emptyMap();
             }
             final String query = u.getQuery().toLowerCase().trim();
@@ -750,7 +859,8 @@ public class TeleportaRelay {
          *      if true - closes output stream
          */
         protected void respondEncryptedProperties(String portalPk,
-                                                  Properties props, HttpExchange exchange, boolean close) {
+                                                  Properties props,
+                                                  HttpExchange exchange, boolean close) {
             try (OutputStream os = exchange.getResponseBody();
                 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                 exchange.sendResponseHeaders(200, 0);
@@ -783,7 +893,8 @@ public class TeleportaRelay {
          *
          * @param exchange current http exchange context
          */
-        protected void respondAndClose(int httpError, HttpExchange exchange) throws IOException {
+        protected void respondAndClose(int httpError,
+                                       HttpExchange exchange) throws IOException {
             exchange.sendResponseHeaders(httpError, 0);
             exchange.close();
         }

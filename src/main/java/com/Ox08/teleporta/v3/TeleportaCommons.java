@@ -147,6 +147,14 @@ public class TeleportaCommons {
                             folder.getAbsolutePath()));
         }
     }
+
+    /**
+     * Delete specified folder recursively
+     * @param file
+     *          folder or file to remove
+     * @param removeParent
+     *          if true - also removes specified folder, otherwise - just inner content
+     */
     public static void deleteRecursive(File file, boolean removeParent) {
         if (file.isFile() && !file.delete()) {
             LOG.warning(String.format("cannot delete file: %s",
@@ -171,8 +179,9 @@ public class TeleportaCommons {
         }
     }
 
-
-
+    /**
+     * Enable debug logging
+     */
     public static void setDebugLogging() {
             // setup logging for client connection
             Logger.getLogger("sun.net.www.protocol.http.HttpURLConnection")

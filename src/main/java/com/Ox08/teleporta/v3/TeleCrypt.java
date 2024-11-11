@@ -15,6 +15,7 @@ import java.security.spec.X509EncodedKeySpec;
  * @since 1.0
  */
 public class TeleCrypt {
+    public static final int SESSION_KEY_LEN = 256;
     /**
      * Decrypt session AES key with RSA private key
      * @param data

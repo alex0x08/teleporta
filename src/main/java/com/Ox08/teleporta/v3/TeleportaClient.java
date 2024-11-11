@@ -214,20 +214,13 @@ public class TeleportaClient {
         final Properties props = new Properties();
         try (BufferedInputStream in = new BufferedInputStream(http.getInputStream(), 512);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
-            final byte[] key = new byte[256];
-            final int c = in.read(key);
-            // note: this is correct case, because we don't respond at all, if there are no pending files or events
-            if (c <= 0) {
+            // note: this is correct case, because we don't respond at all,
+            //  if there are no pending files or events
+            final SecretKeySpec rkey = readSessionKey(in,true);
+            if (rkey== null) {
                 http.disconnect();
                 return null;
             }
-            if (c != 256) {
-                LOG.warning("Key corrupted!");
-                http.disconnect();
-                return null;
-            }
-            byte[] dec = tc.decryptKey(key, ctx.keyPair.getPrivate());
-            final SecretKeySpec rkey = new SecretKeySpec(dec, "AES");
             tc.decryptData(rkey, in, bout);
             try (ByteArrayInputStream bin = new ByteArrayInputStream(bout.toByteArray())) {
                 props.load(bin);
@@ -322,14 +315,11 @@ public class TeleportaClient {
         }
         try (BufferedInputStream in = new BufferedInputStream(http.getInputStream(), 512);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
-            byte[] key = new byte[256];
-            if (in.read(key) != 256) {
-                LOG.warning("Key corrupted!");
+            final SecretKeySpec rkey = readSessionKey(in,false);
+            if (rkey== null) {
                 http.disconnect();
                 return out;
             }
-            byte[] dec = tc.decryptKey(key, ctx.keyPair.getPrivate());
-            final SecretKeySpec rkey = new SecretKeySpec(dec, "AES");
             tc.decryptData(rkey, in, bout);
             try (ByteArrayInputStream bin = new ByteArrayInputStream(bout.toByteArray())) {
                 out.load(bin);
@@ -446,7 +436,6 @@ public class TeleportaClient {
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(String.format("file sent: %s ", file.getAbsolutePath()));
             }
-
         } finally {
             if (file.isFile() && !file.delete()) {
                 LOG.warning(String.format("cannot delete file: %s",
@@ -459,7 +448,6 @@ public class TeleportaClient {
                         packedF.getAbsolutePath()));
             }
         }
-
         http.disconnect();
     }
     /**
@@ -486,15 +474,11 @@ public class TeleportaClient {
         }
         try (BufferedInputStream bin = new BufferedInputStream(http.getInputStream(), 4096);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
-            byte[] key = new byte[256];
-            if (bin.read(key) != 256) {
-                LOG.warning("Key corrupted!");
+            final SecretKeySpec rkey = readSessionKey(bin,false);
+            if (rkey== null) {
                 http.disconnect();
                 return;
             }
-            final byte[] decKey = tc.decryptKey(key,
-                    ctx.keyPair.getPrivate());
-            final SecretKeySpec rkey = new SecretKeySpec(decKey, "AES");
             tc.decryptData(rkey, bin, bout);
             clip.setClipboard(bout.toString());
             if (LOG.isLoggable(Level.FINE)) {
@@ -782,6 +766,22 @@ public class TeleportaClient {
         }
         return out;
     }
+
+
+    private SecretKeySpec readSessionKey(InputStream in,boolean allowEmpty) throws IOException {
+        final byte[] key = new byte[TeleCrypt.SESSION_KEY_LEN];
+        final int c = in.read(key);
+        if (c<=0 && allowEmpty) {
+            return null;
+        }
+        if (c != TeleCrypt.SESSION_KEY_LEN) {
+            LOG.warning("Key corrupted!");
+            return null;
+        }
+        final byte[] dec = tc.decryptKey(key, ctx.keyPair.getPrivate());
+        return new SecretKeySpec(dec, "AES");
+    }
+
     /**
      * Teleporta Client's execution context
      */
@@ -800,6 +800,7 @@ public class TeleportaClient {
             this.allowClipboard = allowClipboard;
         }
     }
+
     private static String parseRelayPublicKey(byte[] data) {
         return new String(data)
                 .replaceAll("[^a-z0-9]","");
