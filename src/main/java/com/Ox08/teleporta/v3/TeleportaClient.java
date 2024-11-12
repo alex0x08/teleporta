@@ -1,14 +1,13 @@
 package com.Ox08.teleporta.v3;
+
 import com.Ox08.teleporta.v3.services.TeleClipboard;
 import com.Ox08.teleporta.v3.services.TeleFilesWatch;
+
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.awt.*;
 import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.InetAddress;
-import java.net.URL;
-import java.net.URLConnection;
+import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,7 +27,9 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+
 import static com.Ox08.teleporta.v3.TeleportaCommons.*;
+
 /**
  * Teleporta Client
  *
@@ -45,8 +46,10 @@ public class TeleportaClient {
     private boolean pollRunning,  // if poll enabled and running
             networkError; // if network error raised
     final TeleFilesWatch watch;
+
     public TeleportaClient(ClientRuntimeContext ctx) throws NoSuchAlgorithmException {
         this.tc = new TeleCrypt();
+        // if clipboard monitoring is enabled - start it
         if (ctx.allowClipboard) {
             clip = new TeleClipboard(data -> {
                 try {
@@ -56,28 +59,40 @@ public class TeleportaClient {
                 }
             });
         }
-        this.watch = new TeleFilesWatch();
+        // if we allow outgoing files - enable Folder Watch service
+        if (ctx.allowOutgoing) {
+            this.watch = new TeleFilesWatch();
+        } else {
+            this.watch = null;
+        }
         this.ctx = ctx;
         this.ctx.keyPair = tc.generateKeys();
     }
+
     public static void main(String[] args) throws Exception {
         setDebugLogging();
-      //  System.setProperty("relayKey","/opt/work/tmp/tele.pub");
-        System.setProperty("useLockFile","true");
-        System.setProperty("dumbWatcher","true");
-
+        //  System.setProperty("relayKey","/opt/work/tmp/tele.pub");
+        System.setProperty("useLockFile", "true");
+        System.setProperty("dumbWatcher", "true");
+        System.setProperty("allowOutgoing","false");
         init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa", true);
     }
+
     public static void init(String relayUrl, boolean allowClipboard) throws Exception {
         // create teleporta client's home folder
         final File teleportaHome = checkCreateHomeFolder("teleporta"),
                 inputDir = new File(teleportaHome, "from"), // for incoming files
                 outputDir = new File(teleportaHome, "to"); // for outgoing files
         checkCreateFolder(inputDir);
-        if (outputDir.exists() && outputDir.isDirectory()) {
-            deleteRecursive(outputDir,false);
-        } else {
-            checkCreateFolder(outputDir);
+        // check if we allow outgoing files on this portal
+        final boolean allowOutgoing =
+                Boolean.parseBoolean(System.getProperty("allowOutgoing", "true"));
+        if (allowOutgoing) {
+            if (outputDir.exists() && outputDir.isDirectory()) {
+                deleteRecursive(outputDir, false);
+            } else {
+                checkCreateFolder(outputDir);
+            }
         }
         // do we need to create desktop link?
         final boolean createDesktopLink =
@@ -103,7 +118,7 @@ public class TeleportaClient {
         }
         // build teleporta client context
         final ClientRuntimeContext ctx = new ClientRuntimeContext(new URL(relayUrl),
-                teleportaHome, allowClipboard);
+                teleportaHome, allowClipboard,allowOutgoing);
         // build client
         final TeleportaClient c = new TeleportaClient(ctx);
         // register on relay
@@ -118,42 +133,47 @@ public class TeleportaClient {
         // load portals list, don't touch watches initially, because output folder should be empty
         c.reloadPortals(false);
         // register watchers for each portal
-        if (!ctx.portalNames.isEmpty()) {
+        if (ctx.allowOutgoing && !ctx.portalNames.isEmpty()) {
             for (String n : ctx.portalNames.keySet()) {
                 final File f = new File(outputDir, n);
                 checkCreateFolder(f);
                 c.watch.register(f.toPath());
-            }
-        }
-        // register handler for new file events
-        c.watch.registerHandler((files, receiver_name) -> {
-            if (!ctx.portalNames.containsKey(receiver_name)) {
-                LOG.warning(String.format("unknown portal: %s", receiver_name));
-                return;
-            }
-            final String id = ctx.portalNames.get(receiver_name);
-            try {
-                for (File f : files) {
-                    ses.submit(() -> {
-                        try {
-                            c.sendFile(f, id);
-                        } catch (Exception e) {
-                            LOG.log(Level.WARNING, e.getMessage(), e);
-                        }
-                    });
                 }
-            } catch (Exception e) { // MUST catch *all* exceptions there
-                LOG.log(Level.WARNING, e.getMessage(), e);
-            }
-        });
-        // start filesystem watcher
-        c.watch.start();
+        }
+        // don't register any watchers, if we're not allow to send anything
+        if (ctx.allowOutgoing) {
+            // register handler for new file events
+            c.watch.registerHandler((files, receiver_name) -> {
+                // check if portal exists on client side first
+                if (!ctx.portalNames.containsKey(receiver_name)) {
+                    LOG.warning(String.format("unknown portal: %s", receiver_name));
+                    return;
+                }
+                // get remote portal's id
+                final String id = ctx.portalNames.get(receiver_name);
+                try {
+                    for (File f : files) {
+                        ses.submit(() -> {
+                            try {
+                                c.sendFile(f, id);
+                            } catch (Exception e) {
+                                LOG.log(Level.WARNING, e.getMessage(), e);
+                            }
+                        });
+                    }
+                } catch (Exception e) { // MUST catch *all* exceptions there
+                    LOG.log(Level.WARNING, e.getMessage(), e);
+                }
+            });
+            // start filesystem watcher
+            c.watch.start();
+        }
         // if work with clipboard is enabled - start it
         if (c.clip != null) {
             c.clip.start();
         }
         c.pollRunning = true;
-        // schedule poll for changes
+        // schedule poll for incoming files
         ses.scheduleAtFixedRate(() -> {
             if (!c.pollRunning) {
                 return;
@@ -190,12 +210,12 @@ public class TeleportaClient {
         }, 0, 5, TimeUnit.SECONDS);
         LOG.info("Connected to relay.");
     }
+
     /**
      * Get pending files
-     * @return
-     *          array with file ids
-     * @throws IOException
-     *      on i/o errors
+     *
+     * @return array with file ids
+     * @throws IOException on i/o errors
      */
     public String[] getPending() throws IOException {
         final String part = decodeUrl(ctx.relayUrl, "poll");
@@ -220,8 +240,8 @@ public class TeleportaClient {
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
             // note: this is correct case, because we don't respond at all,
             //  if there are no pending files or events
-            final SecretKeySpec rkey = readSessionKey(in,true);
-            if (rkey== null) {
+            final SecretKeySpec rkey = readSessionKey(in, true);
+            if (rkey == null) {
                 http.disconnect();
                 return null;
             }
@@ -245,12 +265,12 @@ public class TeleportaClient {
         }
         return props.getProperty("files").split(",");
     }
+
     /**
      * Reload portals from relay
-     * @param updateWatcher
-     *          if true - filesystem watchers will be updated
-     * @throws IOException
-     *          on i/o errors
+     *
+     * @param updateWatcher if true - filesystem watchers will be updated
+     * @throws IOException on i/o errors
      */
     public void reloadPortals(boolean updateWatcher) throws IOException {
         final Properties portals = getPortals();
@@ -271,13 +291,16 @@ public class TeleportaClient {
                     publicKey = portals.getProperty(String.format("portal.%d.publicKey", t));
             ctx.portals.put(id, new TeleportaCommons.RegisteredPortal(name, publicKey));
             ctx.portalNames.put(name, id);
-            if (updateWatcher && !prevPortals.contains(name)) {
-                final File f = new File(outputDir, name);
-                checkCreateFolder(f);
-                watch.register(f.toPath());
+
+            if (ctx.allowOutgoing) {
+                if (updateWatcher && !prevPortals.contains(name)) {
+                    final File f = new File(outputDir, name);
+                    checkCreateFolder(f);
+                    watch.register(f.toPath());
+                }
             }
         }
-        if (updateWatcher && !ctx.portalNames.isEmpty()) {
+        if (ctx.allowOutgoing && updateWatcher && !ctx.portalNames.isEmpty()) {
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(String.format("updating watchers for %d portals",
                         ctx.portalNames.size()));
@@ -294,12 +317,12 @@ public class TeleportaClient {
             }
         }
     }
+
     /**
      * Load portals list
-     * @return
-     *          properties, filled with portals list
-     * @throws IOException
-     *          on i/o and network errors
+     *
+     * @return properties, filled with portals list
+     * @throws IOException on i/o and network errors
      */
     private Properties getPortals() throws IOException {
         final Properties out = new Properties();
@@ -319,8 +342,8 @@ public class TeleportaClient {
         }
         try (BufferedInputStream in = new BufferedInputStream(http.getInputStream(), 512);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
-            final SecretKeySpec rkey = readSessionKey(in,false);
-            if (rkey== null) {
+            final SecretKeySpec rkey = readSessionKey(in, false);
+            if (rkey == null) {
                 http.disconnect();
                 return out;
             }
@@ -333,12 +356,12 @@ public class TeleportaClient {
             http.disconnect();
         }
     }
+
     /**
      * Send clipboard to relay
-     * @param data
-     *          data from clipboard
-     * @throws IOException
-     *          on i/o errors
+     *
+     * @param data data from clipboard
+     * @throws IOException on i/o errors
      */
     public void sendClipboard(String data) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
@@ -379,14 +402,13 @@ public class TeleportaClient {
         }
         http.disconnect();
     }
+
     /**
      * Send file to relay
-     * @param file
-     *          source file
-     * @param receiverId
-     *              remote portal's id
-     * @throws IOException
-     *          on i/o errors
+     *
+     * @param file       source file
+     * @param receiverId remote portal's id
+     * @throws IOException on i/o errors
      */
     public void sendFile(File file, String receiverId) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
@@ -454,10 +476,11 @@ public class TeleportaClient {
         }
         http.disconnect();
     }
+
     /**
      * Download clipboard update
-     * @throws IOException
-     *          on i/o errors
+     *
+     * @throws IOException on i/o errors
      */
     public void downloadClipboard() throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
@@ -478,8 +501,8 @@ public class TeleportaClient {
         }
         try (BufferedInputStream bin = new BufferedInputStream(http.getInputStream(), 4096);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
-            final SecretKeySpec rkey = readSessionKey(bin,false);
-            if (rkey== null) {
+            final SecretKeySpec rkey = readSessionKey(bin, false);
+            if (rkey == null) {
                 http.disconnect();
                 return;
             }
@@ -491,12 +514,12 @@ public class TeleportaClient {
         }
         http.disconnect();
     }
+
     /**
      * Download file from relay
-     * @param fileId
-     *          unique file id (generated on relay)
-     * @throws IOException
-     *          on I/O errors
+     *
+     * @param fileId unique file id (generated on relay)
+     * @throws IOException on I/O errors
      */
     public void downloadFile(String fileId) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
@@ -548,13 +571,13 @@ public class TeleportaClient {
                     // create target file
                     final File out = new File(f, name);
                     // if it's already exist - delete
-                    if (out.exists() ) {
+                    if (out.exists()) {
                         if (out.isFile() && !out.delete()) {
                             LOG.warning(String.format("cannot delete existing file : %s",
                                     out.getAbsolutePath()));
                         }
                         if (out.isDirectory()) {
-                            deleteRecursive(out,true);
+                            deleteRecursive(out, true);
                         }
                         continue;
                     }
@@ -600,10 +623,11 @@ public class TeleportaClient {
         }
         http.disconnect();
     }
+
     /**
      * Regsters portal on remote portal
-     * @throws IOException
-     *      on network errors
+     *
+     * @throws IOException on network errors
      */
     public boolean register() throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
@@ -613,15 +637,8 @@ public class TeleportaClient {
         // note:  existing path will be overwritten
         final URL u = new URL(ctx.relayUrl, ctx.relayUrl.getPath() + "/" + part);
         // try name from environment
-        String portalName = System.getProperty("portalName", null);
-        // try hostname
-        if (portalName == null || portalName.isEmpty()) {
-            portalName = InetAddress.getLocalHost().getHostName();
-        }
-        // send unnamed
-        if (portalName == null || portalName.isEmpty()) {
-            portalName = "Unnamed portal";
-        }
+        String portalName = buildPortalName();
+
         final URLConnection con = u.openConnection();
         final HttpURLConnection http = (HttpURLConnection) con;
         http.setRequestMethod("POST");
@@ -637,18 +654,19 @@ public class TeleportaClient {
         final String relayKey;
 
         /*
-            Check for relay public key
+            Check for relay public key.
+            If its exists - we try to use it during registration process.
          */
         final String relayPublicKeyFile =
                 System.getProperty("relayKey", null);
-        if (relayPublicKeyFile!=null) {
+        if (relayPublicKeyFile != null) {
             final File k = new File(relayPublicKeyFile);
             if (!k.isFile() || !k.canRead()) {
                 System.err.printf("Provided relay key file is not readable: %s", relayPublicKeyFile);
                 return false;
             }
             // stupid check for completely incorrect key file
-            if (k.length() <5 || k.length() > 4096) {
+            if (k.length() < 5 || k.length() > 4096) {
                 System.err.printf("Provided relay key file corrupt or empty: %s", relayPublicKeyFile);
                 return false;
             }
@@ -664,14 +682,14 @@ public class TeleportaClient {
                 // generate 'hello' message
                 final byte[] hello = new byte[16];
                 new SecureRandom().nextBytes(hello);
-                // ecrypt it with relay's public key
-                byte[] enc =tc.encryptKey(hello,relayPublicKey);
+                // encrypt it with relay's public key
+                byte[] enc = tc.encryptKey(hello, relayPublicKey);
                 // send encrypted hello message during register - relay will try to decrypt it
                 // if succeeded - you have correct relay key
-                props.setProperty("hello", toHex(enc,0,0));
+                props.setProperty("hello", toHex(enc, 0, 0));
                 privateRelay = true;
             } catch (Exception e) {
-                throw new RuntimeException("Corrupt relay key",e);
+                throw new RuntimeException("Corrupt relay key", e);
             }
         } else {
             relayKey = null;
@@ -693,6 +711,11 @@ public class TeleportaClient {
         final Properties resp = new Properties();
         try (InputStream in = http.getInputStream()) {
             resp.load(in);
+        }
+        // load and display 'Message of the day'
+        final String motd = resp.getProperty("motd",null);
+        if (motd!=null) {
+           System.out.println(motd);
         }
         // reflect with context
         ctx.sessionId = resp.getProperty("id", null);
@@ -720,8 +743,7 @@ public class TeleportaClient {
     /**
      * Unpacks received zip file back to folder with files
      *
-     * @param zipfolder
-     *          zip archive with folder contents
+     * @param zipfolder zip archive with folder contents
      */
     private void unpackFolder(final File zipfolder) {
         try (final ZipInputStream zipIn = new ZipInputStream(Files.newInputStream(zipfolder.toPath()))) {
@@ -739,12 +761,12 @@ public class TeleportaClient {
             throw new RuntimeException(e);
         }
     }
+
     /**
      * Pack folder into single ZIP file
-     * @param folder
-     *          source folder
-     * @return
-     *          archived folder
+     *
+     * @param folder source folder
+     * @return archived folder
      */
     private File packFolder(File folder) {
         final File out = new File(folder.getParentFile(), folder.getName() + ".tmpzip");
@@ -758,9 +780,9 @@ public class TeleportaClient {
                     final ZipEntry zipEntry = new ZipEntry(
                             (folder.getName()
                                     + '/'
-                                    +pp.relativize(path))
+                                    + pp.relativize(path))
                                     // ZIP requires / slash not \
-                                    .replaceAll("\\\\","/"));
+                                    .replaceAll("\\\\", "/"));
                     try {
                         zos.putNextEntry(zipEntry);
                         Files.copy(path, zos);
@@ -775,19 +797,25 @@ public class TeleportaClient {
         }
         return out;
     }
-
-
-    private SecretKeySpec readSessionKey(InputStream in,boolean allowEmpty) throws IOException {
+    private SecretKeySpec readSessionKey(InputStream in, boolean allowEmpty) throws IOException {
         final byte[] key = new byte[TeleCrypt.SESSION_KEY_LEN];
         final int c = in.read(key);
-        if (c<=0 && allowEmpty) {
+        /*
+         * In some cases relay does not respond any data,
+         * if allowEmpty is set - this is legit
+         */
+        if (c <= 0 && allowEmpty) {
             return null;
         }
+        // If we read less data than key size - key is broken
+        // This is done for simplicity
         if (c != TeleCrypt.SESSION_KEY_LEN) {
             LOG.warning("Key corrupted!");
             return null;
         }
+        // try to decrypt actual key, using own private
         final byte[] dec = tc.decryptKey(key, ctx.keyPair.getPrivate());
+        // try to restore it, to being used later
         return new SecretKeySpec(dec, "AES");
     }
 
@@ -797,21 +825,59 @@ public class TeleportaClient {
     public static class ClientRuntimeContext {
         final File storageDir; // selected storage dir
         final URL relayUrl; // current relay url
-        final boolean allowClipboard; // is clipboard allowed?
+        final boolean allowClipboard, // is clipboard allowed?
+                      allowOutgoing; // if true - we allow outgoing files from this portal
         private String sessionId, // a session id, generated by relay and used as authentication
                 relayPublicKey;  // relay's public key
         private final Map<String, TeleportaCommons.RegisteredPortal> portals = new LinkedHashMap<>();
         private final Map<String, String> portalNames = new LinkedHashMap<>();
-        KeyPair keyPair;
-        ClientRuntimeContext(URL relayUrl, File storageDir, boolean allowClipboard) {
+        KeyPair keyPair; // portal public&private keys
+
+        ClientRuntimeContext(URL relayUrl, File storageDir, boolean allowClipboard,boolean allowOutgoing) {
             this.storageDir = storageDir;
             this.relayUrl = relayUrl;
             this.allowClipboard = allowClipboard;
+            this.allowOutgoing = allowOutgoing;
         }
+    }
+
+    /**
+     * Build portal name
+     * @return
+     *      final portal name
+     */
+    private static String buildPortalName() {
+        // try name from environment
+        String portalName = System.getProperty("portalName", null);
+        // try hostname
+        if (portalName != null && !portalName.isEmpty()) {
+            return portalName;
+        }
+        final String hostName, userName = System.getProperty("user.name", "unknown");
+        try {
+            hostName = InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            throw new RuntimeException(e);
+        }
+        // if template defined - try it
+        final String portalNameTemplate = System.getProperty("portalNameTemplate", null);
+
+        if (portalNameTemplate != null && !portalNameTemplate.isEmpty()) {
+            portalName = portalNameTemplate
+                    .replace("HOSTNAME", hostName)
+                    .replace("USERNAME", userName);
+        } else {
+            portalName = hostName;
+        }
+        // send unnamed
+        if (portalName == null || portalName.isEmpty()) {
+            portalName = "Unnamed portal";
+        }
+        return portalName;
     }
 
     private static String parseRelayPublicKey(byte[] data) {
         return new String(data)
-                .replaceAll("[^a-z0-9]","");
+                .replaceAll("[^a-z0-9]", "");
     }
 }

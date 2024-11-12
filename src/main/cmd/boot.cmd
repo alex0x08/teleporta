@@ -1,6 +1,5 @@
 :b
 @echo off
-@echo Starting Demo...
 :: self script name
 set SELF_SCRIPT=%0
 :: path to unpacked JRE

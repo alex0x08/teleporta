@@ -1,4 +1,5 @@
 package com.Ox08.teleporta.v3;
+
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -25,6 +26,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import static com.Ox08.teleporta.v3.TeleportaCommons.*;
+
 /**
  * Teleporta Relay
  *
@@ -37,26 +39,27 @@ public class TeleportaRelay {
             NON_DELIVERED_EXPIRE = 60 * 60 * 1000;
     private final static Logger LOG = Logger.getLogger("TC");
     private final static ScheduledExecutorService ses = Executors.newScheduledThreadPool(1);
+
     /**
      * Main function is only used for tests
      *
      * @param args
-     *
      * @throws Exception
      */
     public static void main(String[] args) throws Exception {
         setDebugLogging();
         System.setProperty("javax.net.debug", "all");
         System.setProperty("seed", "testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa");
-       // System.setProperty("privateRelay","true");
-        init();
+        // System.setProperty("privateRelay","true");
+        init(false);
     }
+
     /**
      * Initializes Teleporta in relay mode
-     * @throws Exception
-     *          on I/O errors
+     *
+     * @throws Exception on I/O errors
      */
-    public static void init() throws Exception {
+    public static void init(boolean allowClipboard) throws Exception {
         final int port = Integer.parseInt(System.getProperty("appPort", "8989"));
         final File teleportaHome = checkCreateHomeFolder("teleporta-relay");
         deleteRecursive(teleportaHome, false);
@@ -85,72 +88,11 @@ public class TeleportaRelay {
             printRelayKey(rkp.getPublic().getEncoded());
         }
         // build runtime context
-        final RelayRuntimeContext rc = new RelayRuntimeContext(teleportaHome, rkp ,privateRelay);
+        final RelayRuntimeContext rc = new RelayRuntimeContext(teleportaHome,
+                rkp, privateRelay,allowClipboard);
         // background task to remove expired portals
         ses.scheduleAtFixedRate(() -> {
-            final Set<String> expired = new HashSet<>();
-            for (String k : rc.portals.keySet()) {
-                final RuntimePortal p = rc.portals.get(k);
-                // check for other portals expiration
-                if (System.currentTimeMillis() - p.lastSeen > 60_000) {
-                    expired.add(k);
-                }
-            }
-            // remove local folders for expired portals in 'out' folder
-            if (!expired.isEmpty()) {
-                for (String k : expired) {
-                    final RegisteredPortal p = rc.portals.remove(k);
-                    rc.portalNames.remove(p.name);
-                    // remove non-delivered files for expired portals
-                    deleteRecursive(new File(rc.storageDir, p.name), true);
-                    if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(String.format("removed expired portal: %s", p.name));
-                    }
-                }
-                // notify all other about removal
-                for (String k : rc.portals.keySet()) {
-                    final RuntimePortal p = rc.portals.get(k);
-                    p.needReloadPortals = true;
-                }
-            }
-            // second stage: check expiration on each file in relay store,
-            //  which not yet delivered
-            for (String k : rc.portalNames.keySet()) {
-                final File relayParent = new File(rc.storageDir, k);
-                if (!relayParent.exists() || !relayParent.isDirectory()) {
-                    continue;
-                }
-                // note: we limit number of processed files on each iteration
-                // because there could be too many of them
-                try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(relayParent.toPath())) {
-                    int fileCounter = 1;
-                    for (Path e : dirStream) {
-                        if (fileCounter > 1000) {
-                            break;
-                        }
-                        // ignore files not related to Teleporta
-                        if (!e.toString().toLowerCase().endsWith(".dat")) {
-                            continue;
-                        }
-                        final File f = e.toFile();
-                        if (System.currentTimeMillis() - f.lastModified() > NON_DELIVERED_EXPIRE) {
-                            if (!f.delete()) {
-                                LOG.warning(String.format("Cannot remove expired file: %s",
-                                        f.getAbsolutePath()));
-                                continue;
-                            } else {
-                                if (LOG.isLoggable(Level.FINE)) {
-                                    LOG.fine(String.format("removed expired %s non-delivered file",
-                                            f.getAbsolutePath()));
-                                }
-                            }
-                        }
-                        fileCounter++;
-                    }
-                } catch (IOException e) {
-                    LOG.log(Level.WARNING, e.getMessage(), e);
-                }
-            }
+            removeExpiredPortals(rc);
         }, 120, 60, TimeUnit.SECONDS);
         // Use defined or generate seed
         final String seed = System.getProperty("seed", genSeed());
@@ -166,10 +108,13 @@ public class TeleportaRelay {
                 .setHandler(new FilePendingDownloadsHandler(rc));
         server.createContext(generateUrl(seed, "file-download"))
                 .setHandler(new FileDownloadHandler(rc));
-        server.createContext(generateUrl(seed, "cb-download"))
+        if (rc.allowClipboardTransfer) {
+            LOG.info("Clipboard transfer is allowed.");
+            server.createContext(generateUrl(seed, "cb-download"))
                 .setHandler(new ClipboardDownloadHandler(rc));
-        server.createContext(generateUrl(seed, "cb-upload"))
+            server.createContext(generateUrl(seed, "cb-upload"))
                 .setHandler(new ClipboardUploadHandler(rc));
+        }
         server.createContext(generateUrl(seed, "register"))
                 .setHandler(new RegisterHandler(rc));
         server.createContext(generateUrl(seed, "get-portals"))
@@ -177,7 +122,7 @@ public class TeleportaRelay {
         final boolean selfDownload = Boolean
                 .parseBoolean(System.getProperty("selfDownload", "true"));
         if (selfDownload) {
-            LOG.info("Self downloads allowed");
+            LOG.info("Self downloads allowed.");
             server.createContext("/" + seed)
                     .setHandler(new RespondSelfHandler());
         }
@@ -188,6 +133,7 @@ public class TeleportaRelay {
         // starts Teleporta in relay mode
         server.start();
     }
+
     static String generateUrl(String seed, String part) {
         final String url = buildServerUrl(seed, part);
         if (LOG.isLoggable(Level.FINE)) {
@@ -195,6 +141,7 @@ public class TeleportaRelay {
         }
         return String.format("/%s/%s", seed, url);
     }
+
     /**
      * Runtime context, stores configuration and runtime data
      */
@@ -203,62 +150,62 @@ public class TeleportaRelay {
         final Map<String, RuntimePortal> portals = new LinkedHashMap<>(); // all registered portals
         final Map<String, String> portalNames = new LinkedHashMap<>(); // all registered portals names
         final KeyPair relayPair; // relay keys
-        final boolean privateRelay;
-        RelayRuntimeContext(File storageDir, KeyPair kp,boolean privateRelay) {
+        final boolean privateRelay, // if true - we operate in 'private relay' mode
+                allowClipboardTransfer; // if true - we allow clipboard transfers
+        RelayRuntimeContext(File storageDir, KeyPair kp,
+                            boolean privateRelay,boolean allowClipboardTransfer) {
             this.storageDir = storageDir;
             this.relayPair = kp;
             this.privateRelay = privateRelay;
+            this.allowClipboardTransfer = allowClipboardTransfer;
         }
     }
-
     /**
-     *   This handler allows to download Teleporta distribution, generated from runtime.
+     * This handler allows to download Teleporta distribution, generated from runtime.
      */
     static class RespondSelfHandler extends AbstractHandler {
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
             final Map<String, String> params = getQueryParams(httpExchange.getRequestURI());
-            final String dl = params.isEmpty() ?  null : params.get("dl");
+            final String dl = params.isEmpty() ? null : params.get("dl");
+            // if there is no 'dl' parameter - respond static html file
             if (dl == null) {
-                httpExchange.sendResponseHeaders(200,INDEX.length);
+                httpExchange.sendResponseHeaders(200, INDEX.length);
                 // respond static page with javascript to detect self domain
-                httpExchange.getResponseHeaders().add("Content-Type","text/html");
+                httpExchange.getResponseHeaders().add("Content-Type", "text/html");
                 try (OutputStream out = httpExchange.getResponseBody()) {
                     out.write(INDEX);
                     out.flush();
                 }
                 return;
             }
-
             // get self domain name
             final String self = params.get("self");
-
             // get self jar location
             final String jarF = System.getProperty("TELEPORTA_APP_JAR");
             if (jarF == null || jarF.isEmpty()) {
                 LOG.warning("self jar not found, TELEPORTA_APP_JAR is null ");
-                respondAndClose(400,httpExchange);
+                respondAndClose(400, httpExchange);
                 return;
             }
             final File jarFile = new File(jarF);
             if (!jarFile.exists() || !jarFile.isFile() || !jarFile.canRead()) {
-                    LOG.warning(String.format("self file not found or not readable: '%s'", jarFile));
-                respondAndClose(400,httpExchange);
+                LOG.warning(String.format("self file not found or not readable: '%s'", jarFile));
+                respondAndClose(400, httpExchange);
                 return;
             }
-
             final Headers headers = httpExchange.getResponseHeaders();
-            headers.set("Content-Type","application/octet-stream");
+            headers.set("Content-Type", "application/octet-stream");
             // build .zip distribution and respond as stream
             headers.set("Content-Disposition", "attachment;filename=teleporta.zip");
-            httpExchange.sendResponseHeaders(200,0);
-
+            httpExchange.sendResponseHeaders(200, 0);
             final byte[] buffer = new byte[4096];
             try (ZipOutputStream zout = new ZipOutputStream(httpExchange.getResponseBody());
                  FileInputStream in = new FileInputStream(jarFile)) {
-                zout.putNextEntry(new ZipEntry("/teleporta/" ));
+                zout.putNextEntry(new ZipEntry("/teleporta/"));
                 zout.closeEntry();
                 zout.putNextEntry(new ZipEntry("/teleporta/" + jarFile.getName()));
+                // write app data
                 for (int n = in.read(buffer); n >= 0; n = in.read(buffer))
                     zout.write(buffer, 0, n);
                 zout.closeEntry();
@@ -274,6 +221,12 @@ public class TeleportaRelay {
             }
         }
 
+        /**
+         * This is static HTML with simple JS, to detect relay's external URL.
+         * In most cases it will be behind some proxy like Nginx, not directly connected, so
+         * Teleporta would not know full external URL.
+         *
+         */
         private static final byte[] INDEX = ("<!DOCTYPE html>\n" +
                 "<html>\n" +
                 "    <head>\n" +
@@ -288,9 +241,9 @@ public class TeleportaRelay {
                 "</html>\n").getBytes(StandardCharsets.UTF_8);
     }
 
-            /**
-             * A handler to respond registered portals
-             */
+    /**
+     * A handler to respond registered portals
+     */
     static class GetPortalsHandler extends AbstractHandler {
         private final RelayRuntimeContext rc;
         GetPortalsHandler(RelayRuntimeContext rc) {
@@ -310,7 +263,7 @@ public class TeleportaRelay {
                 return;
             }
             final RuntimePortal p = rc.portals.get(to);
-            // mark for 'non-reload'
+            // reset 'reload' mark
             p.needReloadPortals = false;
             // if there is no portals registered - just respond 200 ok without body
             if (rc.portals.isEmpty()) {
@@ -335,7 +288,7 @@ public class TeleportaRelay {
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(String.format("respond %d portals", count));
             }
-            respondEncryptedProperties(p.publicKey,props,httpExchange,false);
+            respondEncryptedProperties(p.publicKey, props, httpExchange, false);
         }
     }
     /**
@@ -344,10 +297,19 @@ public class TeleportaRelay {
     static class RegisterHandler extends AbstractHandler {
         private final RelayRuntimeContext rc;
         private final boolean allowPortalNamesUpdate; // if set - we allow to replace registered portals
+        private final String motd;
         RegisterHandler(RelayRuntimeContext rc) {
             this.rc = rc;
             allowPortalNamesUpdate = Boolean.parseBoolean(
                     System.getProperty("allowPortalNameUpdate", "false"));
+            String m =System.getProperty("motd",null);
+            if (m == null || m.isEmpty()) {
+                m = String.format("Welcome to Teleporta Relay v%s",
+                        SystemInfo.SI.getBuildVersion());
+            } else if (m.length()>512) {
+                m = m.substring(0,512);
+            }
+            motd = m;
         }
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
@@ -371,11 +333,15 @@ public class TeleportaRelay {
             // portal name (must be unique)
             final String name = data.getProperty("name", null),
                     // portal's public key
-                   publicKey = data.getProperty("publicKey", null);
-
+                    publicKey = data.getProperty("publicKey", null);
+            /*
+             * In 'private' mode, client must send special encrypted message,
+             *  created with his copy of relay's public key.
+             *  This works as proof that client has correct key and his requests could be processed
+             */
             if (rc.privateRelay) {
-                final String helloMsg = data.getProperty("hello",null);
-                if (helloMsg==null || helloMsg.isEmpty()) {
+                final String helloMsg = data.getProperty("hello", null);
+                if (helloMsg == null || helloMsg.isEmpty()) {
                     LOG.warning("Hello message required.");
                     respondAndClose(403, httpExchange);
                     return;
@@ -409,19 +375,17 @@ public class TeleportaRelay {
                 // allow session replacement for same public key
                 if (p.publicKey.equals(publicKey)) {
                     id = existingId;
-                // mostly for testing
-                } else if(allowPortalNamesUpdate) {
+                    // mostly for testing
+                } else if (allowPortalNamesUpdate) {
                     id = existingId;
                     p.publicKey = publicKey; // update public key
-
                     // notify all other portals to reload list from relay
                     for (RuntimePortal pp : rc.portals.values()) {
-                        if (pp.name.equals(p.name)){
+                        if (pp.name.equals(p.name)) {
                             continue;
                         }
                         pp.needReloadPortals = true;
                     }
-
                 } else {
                     LOG.log(Level.WARNING, "Duplicate portal name");
                     respondAndClose(400, httpExchange);
@@ -440,13 +404,20 @@ public class TeleportaRelay {
             // respond back generated ID
             final Properties resp = new Properties();
             resp.setProperty("id", id);
+            /*
+             * If we operate in normal mode then it's ok to respond own public key
+             */
             if (!rc.privateRelay) {
                 resp.setProperty("publicKey",
                         toHex(rc.relayPair.getPublic().getEncoded(), 0, 0));
             }
+            if (motd!=null) {
+                resp.setProperty("motd",motd);
+            }
             respondProperties(resp, httpExchange, false);
         }
     }
+
     /**
      * A handler to respond list of files, awaiting download
      */
@@ -485,9 +456,9 @@ public class TeleportaRelay {
                 if (props.isEmpty()) {
                     respondAndClose(200, httpExchange);
                 } else {
-                    respondEncryptedProperties(p.publicKey,props, httpExchange, true);
+                    respondEncryptedProperties(p.publicKey, props, httpExchange, true);
                 }
-                 return;
+                return;
             }
             final StringBuilder sb = new StringBuilder();
             try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(toFolder.toPath())) {
@@ -510,18 +481,17 @@ public class TeleportaRelay {
             } catch (IOException e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
-
             // no .dat files, but still settings
             if (sb.length() == 0) {
                 if (props.isEmpty()) {
-                    respondAndClose(200,httpExchange);
+                    respondAndClose(200, httpExchange);
                 } else {
-                    respondEncryptedProperties(p.publicKey,props, httpExchange, true);
+                    respondEncryptedProperties(p.publicKey, props, httpExchange, true);
                 }
                 return;
             }
             props.setProperty("files", sb.toString());
-            respondEncryptedProperties(p.publicKey,props, httpExchange, false);
+            respondEncryptedProperties(p.publicKey, props, httpExchange, false);
         }
     }
     /**
@@ -582,6 +552,7 @@ public class TeleportaRelay {
             }
         }
     }
+
     /**
      * Handler to upload new clipboard content
      */
@@ -647,14 +618,17 @@ public class TeleportaRelay {
             }
         }
     }
+
     /**
      * Handler to download updated clipboard contents
      */
     static class ClipboardDownloadHandler extends AbstractHandler {
         private final RelayRuntimeContext rc;
+
         ClipboardDownloadHandler(RelayRuntimeContext rc) {
             this.rc = rc;
         }
+
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
             final Map<String, String> params = getQueryParams(httpExchange.getRequestURI());
@@ -675,7 +649,7 @@ public class TeleportaRelay {
             final RuntimePortal p = rc.portals.get(to);
             // check for clipboard file
             final File rFile = new File(rc.storageDir, "cb.dat");
-            if (!rFile.exists() ||!rFile.isFile() ||!rFile.canRead()) {
+            if (!rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
                 p.needLoadClipboard = false;
                 LOG.warning(String.format("Clipboard file not found or not readable: %s",
                         rFile.getAbsolutePath()));
@@ -688,7 +662,7 @@ public class TeleportaRelay {
                  FileInputStream fin = new FileInputStream(rFile)) {
                 // try to extract session key first (AES)
                 final byte[] key = new byte[256];
-                if (fin.read(key)!=key.length) {
+                if (fin.read(key) != key.length) {
                     LOG.warning("Clipboard key corrupted!");
                     respondAndClose(400, httpExchange);
                     return;
@@ -707,6 +681,7 @@ public class TeleportaRelay {
                 out.flush();
                 // do re-encryption for data flow
                 tc.rencryptData(rkey, key2, fin, out);
+                // reset mark for clipboard update
                 p.needLoadClipboard = false;
                 if (LOG.isLoggable(Level.FINE)) {
                     LOG.fine(String.format("file downloaded: %s", rFile.getAbsolutePath()));
@@ -721,6 +696,7 @@ public class TeleportaRelay {
             }
         }
     }
+
     /**
      * Handle files downloads
      */
@@ -744,7 +720,7 @@ public class TeleportaRelay {
             final File toFolder = new File(rc.storageDir, to),
                     rFile = new File(toFolder, fileId + ".dat");
 
-            if (!rFile.exists() ||!rFile.isFile() || !rFile.canRead()) {
+            if (!rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
                 LOG.warning(String.format("Stored file not found or not readable: %s",
                         rFile.getAbsolutePath()));
                 respondAndClose(400, httpExchange);
@@ -771,17 +747,18 @@ public class TeleportaRelay {
             }
         }
     }
+
     /**
      * Abstract shared handler, contains some useful stuff.
      */
     abstract static class AbstractHandler implements HttpHandler {
         protected final TeleCrypt tc = new TeleCrypt();
+
         /**
          * Extract query params from URL
-         * @param u
-         *          url
-         * @return
-         *      key-value pairs with provided params
+         *
+         * @param u url
+         * @return key-value pairs with provided params
          */
         Map<String, String> getQueryParams(URI u) {
             if (u == null || u.getQuery() == null) {
@@ -810,6 +787,7 @@ public class TeleportaRelay {
             }
             return qp;
         }
+
         /**
          * Checks that current request is not POST
          * We allow only POST for some endpoints.
@@ -824,14 +802,13 @@ public class TeleportaRelay {
             respondAndClose(400, exchange);
             return true;
         }
+
         /**
          * Respond unencrypted properties to http stream
-         * @param props
-         *          filled properties object
-         * @param exchange
-         *          HttpExchange instance
-         * @param close
-         *          if true - HttpExchange.close() method will be called
+         *
+         * @param props    filled properties object
+         * @param exchange HttpExchange instance
+         * @param close    if true - HttpExchange.close() method will be called
          */
         protected void respondProperties(Properties props, HttpExchange exchange, boolean close) {
             try (OutputStream os = exchange.getResponseBody()) {
@@ -846,36 +823,34 @@ public class TeleportaRelay {
                 }
             }
         }
+
         /**
          * Respond Properties file with encryption
-         * @param portalPk
-         *          portal (client) public key
-         * @param props
-         *          properties object
-         * @param exchange
-         *          current http exchange context
-         * @param close
-         *      if true - closes output stream
+         *
+         * @param portalPk portal (client) public key
+         * @param props    properties object
+         * @param exchange current http exchange context
+         * @param close    if true - closes output stream
          */
         protected void respondEncryptedProperties(String portalPk,
                                                   Properties props,
                                                   HttpExchange exchange, boolean close) {
             try (OutputStream os = exchange.getResponseBody();
-                ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                 exchange.sendResponseHeaders(200, 0);
                 // generate new session key (AES)
-                final SecretKey sk =tc.generateFileKey();
+                final SecretKey sk = tc.generateFileKey();
                 // restore public key
-                PublicKey pk =tc.restorePublicKey(fromHex(portalPk));
+                final PublicKey pk = tc.restorePublicKey(fromHex(portalPk));
                 // encrypt session key with public key
-                byte[] enc = tc.encryptKey(sk.getEncoded(),pk);
+                final byte[] enc = tc.encryptKey(sk.getEncoded(), pk);
                 // write encrypted key
                 os.write(enc);
                 // store properties data into byte array
                 props.store(baos, "");
                 // now encrypt stored data and push it to client
                 try (ByteArrayInputStream in = new ByteArrayInputStream(baos.toByteArray())) {
-                    tc.encryptData(sk, in, os );
+                    tc.encryptData(sk, in, os);
                 }
                 os.flush();
             } catch (Exception e) {
@@ -886,6 +861,7 @@ public class TeleportaRelay {
                 }
             }
         }
+
         /**
          * Respond 400 Bad Request
          * This is used as universal 'bad request' answer.
@@ -898,18 +874,90 @@ public class TeleportaRelay {
             exchange.close();
         }
     }
+
     /**
      * DTO to store portal details
      */
     static class RuntimePortal extends RegisteredPortal {
-        boolean needReloadPortals, needLoadClipboard;
+        boolean needReloadPortals, // if true - this portal must reload portals list from relay
+                needLoadClipboard;  // if true - this portal must load clipboard file
         long lastSeen;
+
         RuntimePortal(String name, String publicKey) {
             super(name, publicKey);
         }
     }
-    public static void printRelayKey(byte[] data) {
-        System.out.printf("%s|%n", ("|TELEPORTA" + toHex(data,0,0))
+
+    private static void removeExpiredPortals(RelayRuntimeContext rc) {
+        final Set<String> expired = new HashSet<>();
+        for (String k : rc.portals.keySet()) {
+            final RuntimePortal p = rc.portals.get(k);
+            // check for other portals expiration
+            if (System.currentTimeMillis() - p.lastSeen > 60_000) {
+                expired.add(k);
+            }
+        }
+        // remove local folders for expired portals in 'out' folder
+        if (!expired.isEmpty()) {
+            for (String k : expired) {
+                final RegisteredPortal p = rc.portals.remove(k);
+                rc.portalNames.remove(p.name);
+                // remove non-delivered files for expired portals
+                deleteRecursive(new File(rc.storageDir, p.name), true);
+                if (LOG.isLoggable(Level.FINE)) {
+                    LOG.fine(String.format("removed expired portal: %s", p.name));
+                }
+            }
+            // notify all other about removal
+            for (String k : rc.portals.keySet()) {
+                final RuntimePortal p = rc.portals.get(k);
+                p.needReloadPortals = true;
+            }
+        }
+        // second stage: check expiration on each file in relay store,
+        //  which not yet delivered
+        for (String k : rc.portalNames.keySet()) {
+            final File relayParent = new File(rc.storageDir, k);
+            if (!relayParent.exists() || !relayParent.isDirectory()) {
+                continue;
+            }
+            // note: we limit number of processed files on each iteration
+            // because there could be too many of them
+            try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(relayParent.toPath())) {
+                int fileCounter = 1;
+                for (Path e : dirStream) {
+                    if (fileCounter > 1000) {
+                        break;
+                    }
+                    // ignore files not related to Teleporta
+                    if (!e.toString().toLowerCase().endsWith(".dat")) {
+                        continue;
+                    }
+                    final File f = e.toFile();
+                    if (System.currentTimeMillis() - f.lastModified() > NON_DELIVERED_EXPIRE) {
+                        if (!f.delete()) {
+                            LOG.warning(String.format("Cannot remove expired file: %s",
+                                    f.getAbsolutePath()));
+                            continue;
+                        } else {
+                            if (LOG.isLoggable(Level.FINE)) {
+                                LOG.fine(String.format("removed expired %s non-delivered file",
+                                        f.getAbsolutePath()));
+                            }
+                        }
+                    }
+                    fileCounter++;
+                }
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, e.getMessage(), e);
+            }
+        }
+
+    }
+
+
+    static void printRelayKey(byte[] data) {
+        System.out.printf("%s|%n", ("|TELEPORTA" + toHex(data, 0, 0))
                 .replaceAll(".{80}(?=.)", "$0\n"));
     }
 }

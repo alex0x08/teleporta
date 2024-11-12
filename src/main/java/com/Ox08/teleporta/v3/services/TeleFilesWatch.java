@@ -23,7 +23,7 @@ import static java.nio.file.StandardWatchEventKinds.*;
 public class TeleFilesWatch {
     private final static Logger LOG = Logger.getLogger("TC");
     private final ScheduledExecutorService ses;
-
+    // actual watcher implementation used
     private final FolderWatcher watcher;
 
     private final Object l = new Object();
@@ -95,7 +95,6 @@ public class TeleFilesWatch {
         }
         // for 'dumb' watcher, we don't register in WatcherService and use our own list instead.
         watcher.unregister(dir);
-
     }
     /**
      * Registers new watcher for specified folder
@@ -114,9 +113,13 @@ public class TeleFilesWatch {
     public interface FileProcessHandler {
         void handle(List<File> files, String receiver);
     }
+
+    /**
+     * Internal file event, stored in queue
+     */
     static class FileEvent {
-        private final File file;
-        private final String receiver;
+        private final File file; // link to file
+        private final String receiver;  // receiver portal name
         private FileEvent(File f, String r) {
             this.file = f;
             this.receiver = r;
@@ -221,7 +224,7 @@ public class TeleFilesWatch {
         READY // folder is ready for process, has no files and no 'lock' file
     }
 
-    interface FolderWatcher {
+    public interface FolderWatcher {
         void register(Path dir);
         void unregister(Path dir);
         void start();

@@ -1,11 +1,9 @@
 package com.Ox08.teleporta.v3;
 import java.io.File;
 import java.io.FileInputStream;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-
 import static com.Ox08.teleporta.v3.TeleportaCommons.setDebugLogging;
 /**
  * Start class for both client and server sides.
@@ -16,8 +14,7 @@ import static com.Ox08.teleporta.v3.TeleportaCommons.setDebugLogging;
 public class Main {
     public static void main(String[] args) throws Exception {
         // load build info
-        final SystemInfo si = new SystemInfo();
-        si.load();
+        SystemInfo.SI.load();
         // try to load config file first (if exist)
         final File configFile = new File("teleporta.properties");
         boolean configLoaded = false;
@@ -37,7 +34,6 @@ public class Main {
                 configLoaded = true;
             }
         }
-
         // if no arguments provided and no config found - just print help
         if (args.length == 0 && !configLoaded) {
             printHelp();
@@ -74,9 +70,7 @@ public class Main {
             return;
         }
         relayUrl = relayUrl.toLowerCase();
-
         final boolean relay;
-
         // if there is '-relay' parameter - start Teleporta in 'relay' mode
         if ("-relay".equalsIgnoreCase(relayUrl)) {
             relay = true;
@@ -93,13 +87,14 @@ public class Main {
         final boolean showLogo = Boolean.parseBoolean(
                 System.getProperty("showLogo", "true"));
         if (showLogo) {
-            printLogo(relay,si);
+            printLogo(relay);
         }
+        // clipboard needs to be enabled both on relay and portal sides
+        final boolean enableClipboard =
+                Boolean.parseBoolean(System.getProperty("clipboard", "false"));
         if (relay) {
-            TeleportaRelay.init();
+            TeleportaRelay.init(enableClipboard);
         } else {
-            final boolean enableClipboard =
-                    Boolean.parseBoolean(System.getProperty("clipboard", "false"));
             TeleportaClient.init(relayUrl, enableClipboard);
         }
     }
@@ -124,7 +119,8 @@ public class Main {
             + "⠈⠙⠵⣒⠤⠤⣀⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⣔⣮⣶⣿⣿⣿⣿⣿ \n"
             + "⠀⠀⠀⠀⠉⠉⠒⠒⠮⠭⠭⢉⣉⣈⡉⠉⠭⠭⠝⠋⠘⠝⠻⣿⣿⣿⣿⣿⣿⣿ \n"
             + "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣮⡻⣿⣿⣿⣿⣿ \n";
-    static void printLogo(boolean relay,SystemInfo si) {
+    static void printLogo(boolean relay) {
+        final SystemInfo si = SystemInfo.SI;
         System.out.printf(TELE_LOGO,
                 relay? "Relay" : "Portal",
                 si.getBuildVersion(), si.getBuildNum(), si.getBuildTime());

@@ -23,6 +23,7 @@ public class TeleClipboard {
     /**
      * Must be synchronized, due to clipboard nature
      * @param data
+     *          updated clipboard text data
      */
     public synchronized void setClipboard(String data) {
         if (data==null || data.isEmpty()) {

@@ -54,4 +54,5 @@ public class SystemInfo {
             throw new RuntimeException(e);
         }
     }
+    public static final SystemInfo SI = new SystemInfo();
 }
