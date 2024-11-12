@@ -2,6 +2,7 @@ package com.Ox08.teleporta.v3;
 
 import com.Ox08.teleporta.v3.services.TeleClipboard;
 import com.Ox08.teleporta.v3.services.TeleFilesWatch;
+import com.Ox08.teleporta.v3.services.TeleLnk;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -110,7 +111,16 @@ public class TeleportaClient {
                     lnk = new File(homeFolder, "Teleporta");
                 }
                 if (!lnk.exists()) {
-                    Files.createSymbolicLink(lnk.toPath(), teleportaHome.toPath());
+
+                    // for Windows, we need to create .lnk file manually, because createSymbolicLink is not allowed
+                    // without Administrator permissions
+                    if (System.getProperty("os.name","").toLowerCase().startsWith("windows")) {
+                        TeleLnk.createLnkFor(teleportaHome.toPath(),
+                                new File(lnk.getParent(),lnk.getName()+".lnk"));
+                    } else {
+                        Files.createSymbolicLink(lnk.toPath(), teleportaHome.toPath());
+                    }
+
                 }
             } catch (IOException ex) {
                 LOG.log(Level.WARNING, ex.getMessage(), ex);
