@@ -111,7 +111,6 @@ public class TeleportaClient {
                     lnk = new File(homeFolder, "Teleporta");
                 }
                 if (!lnk.exists()) {
-
                     // for Windows, we need to create .lnk file manually, because createSymbolicLink is not allowed
                     // without Administrator permissions
                     if (System.getProperty("os.name","").toLowerCase().startsWith("windows")) {
@@ -218,7 +217,7 @@ public class TeleportaClient {
                 c.networkError = true;
             }
         }, 0, 5, TimeUnit.SECONDS);
-        LOG.info("Connected to relay.");
+
     }
 
     /**
@@ -242,7 +241,9 @@ public class TeleportaClient {
                 register();
                 reloadPortals(true);
             }
-            LOG.warning(String.format("incorrect relay response %d ", code));
+            if (LOG.isLoggable(Level.FINE)) {
+                LOG.fine(String.format("incorrect relay response %d ", code));
+            }
             return null;
         }
         final Properties props = new Properties();
@@ -713,7 +714,9 @@ public class TeleportaClient {
         int code = http.getResponseCode();
         // check HTTP status
         if (code != HttpURLConnection.HTTP_OK) {
-            LOG.warning(String.format("incorrect relay response: %d", code));
+            if (LOG.isLoggable(Level.FINE)) {
+                LOG.fine(String.format("incorrect relay response: %d", code));
+            }
             http.disconnect();
             return false;
         }
@@ -747,6 +750,7 @@ public class TeleportaClient {
             return false;
         }
         http.disconnect();
+        LOG.info("Connected to relay.");
         return true;
     }
 
