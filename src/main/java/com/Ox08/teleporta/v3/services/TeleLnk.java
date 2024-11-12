@@ -12,7 +12,6 @@ import java.util.regex.Pattern;
 /**
  * This class is based on amazing Dmitrii Shamrikov's work:
  *  <a href="https://github.com/BlackOverlord666/mslinks">...</a>
- *
  *  Because we don't need most of original library, we stripped code to one simple task:
  *     to create .lnk file on user's Desktop, that points to Teleporta's 'to' folder.
  *  That's all.

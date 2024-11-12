@@ -2,11 +2,12 @@ rem(){ :;};rem '
 @goto b
 ';echo -n "a";
 
-if [ -z "$BASH" ]; then 
+if [ -z "$BASH" ]; then
 echo -n "b"
 exec bash "$0" "$@"
 exit
 fi
+
 
 # this variable will contain full path to JRE binary
 _JRE=
