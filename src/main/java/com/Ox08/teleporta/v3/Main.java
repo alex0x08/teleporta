@@ -1,6 +1,7 @@
 package com.Ox08.teleporta.v3;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -98,10 +99,14 @@ public class Main {
             TeleportaClient.init(relayUrl, enableClipboard);
         }
     }
-    static void printHelp() {
+    static void printHelp() throws IOException {
         System.out.println("Use as:");
         System.out.println("http://relay.url:port/seed (copy full url from relay output");
         System.out.println("-relay  Will start Teleporta Relay");
+        System.out.println("Press any key to exit.");
+        if (System.in.read()>0) {
+            System.exit(0);
+        }
     }
     private static final String TELE_LOGO
             = "⣿⣿⣿⣿⣿⣿⣿⢟⠫⠓⠚⠉⠙⠓⠫⢻⠿⣟⠿⠭⠩⠛⡻⣿⣿⣿⣿⣿⣿⣿ \n"
