@@ -10,6 +10,7 @@ import java.awt.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -30,6 +31,7 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import static com.Ox08.teleporta.v3.TeleportaCommons.*;
+import static com.Ox08.teleporta.v3.services.TeleFilesWatch.isAcceptable;
 
 /**
  * Teleporta Client
@@ -62,7 +64,7 @@ public class TeleportaClient {
         }
         // if we allow outgoing files - enable Folder Watch service
         if (ctx.allowOutgoing) {
-            this.watch = new TeleFilesWatch();
+            this.watch = new TeleFilesWatch(ctx.useLockFile);
         } else {
             this.watch = null;
         }
@@ -87,10 +89,18 @@ public class TeleportaClient {
         checkCreateFolder(inputDir);
         // check if we allow outgoing files on this portal
         final boolean allowOutgoing =
-                Boolean.parseBoolean(System.getProperty("allowOutgoing", "true"));
+                Boolean.parseBoolean(System.getProperty("allowOutgoing", "true")),
+                clearOutgoing =
+                Boolean.parseBoolean(System.getProperty("clearOutgoing", "false")),
+
+                // check for 'lock' mode
+                useLockFile = Boolean.parseBoolean(System.getProperty("useLockFile", "false"));
+
         if (allowOutgoing) {
             if (outputDir.exists() && outputDir.isDirectory()) {
-                deleteRecursive(outputDir, false);
+                if (clearOutgoing) {
+                    deleteRecursive(outputDir, false);
+                }
             } else {
                 checkCreateFolder(outputDir);
             }
@@ -111,7 +121,8 @@ public class TeleportaClient {
                     lnk = new File(homeFolder, "Teleporta");
                 }
                 if (!lnk.exists()) {
-                    // for Windows, we need to create .lnk file manually, because createSymbolicLink is not allowed
+                    // for Windows, we need to create .lnk file manually,
+                    // because createSymbolicLink is not allowed
                     // without Administrator permissions
                     if (System.getProperty("os.name","").toLowerCase().startsWith("windows")) {
                         TeleLnk.createLnkFor(teleportaHome.toPath(),
@@ -127,7 +138,7 @@ public class TeleportaClient {
         }
         // build teleporta client context
         final ClientRuntimeContext ctx = new ClientRuntimeContext(new URL(relayUrl),
-                teleportaHome, allowClipboard,allowOutgoing);
+                teleportaHome, allowClipboard,allowOutgoing,useLockFile);
         // build client
         final TeleportaClient c = new TeleportaClient(ctx);
         // register on relay
@@ -143,16 +154,25 @@ public class TeleportaClient {
         c.reloadPortals(false);
         // register watchers for each portal
         if (ctx.allowOutgoing && !ctx.portalNames.isEmpty()) {
+
+            if (!clearOutgoing) {
+                c.sendAllNotDelivered(outputDir,ctx.useLockFile);
+            }
+
             for (String n : ctx.portalNames.keySet()) {
-                final File f = new File(outputDir, n);
-                checkCreateFolder(f);
-                c.watch.register(f.toPath());
+                    final File f = new File(outputDir, n);
+                    checkCreateFolder(f);
+                    c.watch.register(f.toPath());
                 }
         }
         // don't register any watchers, if we're not allow to send anything
         if (ctx.allowOutgoing) {
             // register handler for new file events
             c.watch.registerHandler((files, receiver_name) -> {
+                // pause transfer attempts if there is network error
+                if(c.networkError) {
+                    return;
+                }
                 // check if portal exists on client side first
                 if (!ctx.portalNames.containsKey(receiver_name)) {
                     LOG.warning(String.format("unknown portal: %s", receiver_name));
@@ -162,6 +182,9 @@ public class TeleportaClient {
                 final String id = ctx.portalNames.get(receiver_name);
                 try {
                     for (File f : files) {
+                        if (c.networkError) {
+                            break;
+                        }
                         ses.submit(() -> {
                             try {
                                 c.sendFile(f, id);
@@ -189,11 +212,15 @@ public class TeleportaClient {
             }
             try {
                 final String[] files = c.getPending();
-                c.networkError = false; // first successful request turns this switch off
+                if (c.networkError) {
+                    c.networkError = false; // first successful request turns this switch off
+                    //c.sendAllNotDelivered(outputDir,ctx.useLockFile);
+                }
                 if (files != null) {
                     if (LOG.isLoggable(Level.FINE)) {
                         LOG.fine(String.format("found %d pending files", files.length));
                     }
+                    // there could be only few files always, no need for dir streaming
                     for (String file : files) {
                         ses.submit(() -> {
                             try {
@@ -422,6 +449,9 @@ public class TeleportaClient {
      * @throws IOException on i/o errors
      */
     public void sendFile(File file, String receiverId) throws IOException {
+        if (networkError) {
+            return;
+        }
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine(String.format("sending file file %s ", file.getAbsolutePath()));
         }
@@ -754,6 +784,47 @@ public class TeleportaClient {
         return true;
     }
 
+    public void sendAllNotDelivered(File outputDir, boolean useLockFile) {
+        if (LOG.isLoggable(Level.FINE)) {
+            LOG.fine("sending non-delivered files");
+        }
+        for (String n : ctx.portalNames.keySet()) {
+            // get remote portal's id
+            final String id = ctx.portalNames.get(n);
+            final File f = new File(outputDir, n);
+            if (!f.exists() || !f.isDirectory() || !f.canRead()) {
+                continue;
+            }
+            if (useLockFile) {
+                final File lock = new File(f,"lock");
+                if (lock.exists()) {
+                    continue;
+                }
+            }
+            try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(f.toPath())) {
+                for (Path e : dirStream) {
+                    final File ff = e.toFile();
+                    // ignore packed folders, caught in process
+                    if (ff.getName().endsWith(".tmpzip")) {
+                        continue;
+                    }
+                    if (!isAcceptable(ff)) {
+                        // ignore non-existent or non-readable
+                        // ( possibly deleted before trigger happens )
+                        continue;
+                    }
+                    try {
+                        sendFile(ff, id);
+                    } catch (Exception ee) {
+                        LOG.log(Level.WARNING,ee.getMessage(), ee);
+                    }
+                }
+            } catch (IOException e) {
+                LOG.log(Level.WARNING,e.getMessage(), e);
+            }
+        }
+    }
+
     /**
      * Unpacks received zip file back to folder with files
      *
@@ -840,18 +911,21 @@ public class TeleportaClient {
         final File storageDir; // selected storage dir
         final URL relayUrl; // current relay url
         final boolean allowClipboard, // is clipboard allowed?
-                      allowOutgoing; // if true - we allow outgoing files from this portal
+                      allowOutgoing,  // if true - we allow outgoing files from this portal
+                      useLockFile;
         private String sessionId, // a session id, generated by relay and used as authentication
                 relayPublicKey;  // relay's public key
         private final Map<String, TeleportaCommons.RegisteredPortal> portals = new LinkedHashMap<>();
         private final Map<String, String> portalNames = new LinkedHashMap<>();
         KeyPair keyPair; // portal public&private keys
 
-        ClientRuntimeContext(URL relayUrl, File storageDir, boolean allowClipboard,boolean allowOutgoing) {
+        ClientRuntimeContext(URL relayUrl, File storageDir,
+                             boolean allowClipboard,boolean allowOutgoing, boolean useLockFile) {
             this.storageDir = storageDir;
             this.relayUrl = relayUrl;
             this.allowClipboard = allowClipboard;
             this.allowOutgoing = allowOutgoing;
+            this.useLockFile = useLockFile;
         }
     }
 

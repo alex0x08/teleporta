@@ -37,10 +37,10 @@ public class TeleFilesWatch {
     /**
      * Default constructor
      */
-    public TeleFilesWatch() {
+    public TeleFilesWatch(boolean useLockFile) {
+        this.useLockFile = useLockFile;
         this.ses = Executors.newScheduledThreadPool(3); //2 tasks + 1 backup
         boolean useDumbWatcher = Boolean.parseBoolean(System.getProperty("dumbWatcher", "false"));
-        useLockFile = Boolean.parseBoolean(System.getProperty("useLockFile", "false"));
         if (useLockFile) {
             LOG.info("Using lock files, you need to remove 'lock' file manually to trigger uploading");
             lockFiles =new HashMap<>();

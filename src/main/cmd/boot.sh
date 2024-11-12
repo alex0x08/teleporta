@@ -133,7 +133,7 @@ then
     try_download_java
     #echo "2.2 Using JRE: $_JRE"
 fi
-
+echo ""
 self=$(get_realpath "$0")
 $_JRE -jar "$self" "$@"
 exit

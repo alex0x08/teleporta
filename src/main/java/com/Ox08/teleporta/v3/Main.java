@@ -113,9 +113,8 @@ public class Main {
             "| T.--. | Teleporta %s v%s\n" +
             "| :/ \\: | Build: %s, created: %s\n" +
             "| (___) |\n" +
-            "| '--'T |\n" +
-            "`------'\n";
-
+            "| '--'T | Created by Alex Chernyshev, @alex0x08 \n" +
+            "`------'  (c) 0x08 Software, 2015-2024 https://0x08.ru \n";
 
     static void printLogo(boolean relay) {
         final SystemInfo si = SystemInfo.SI;
