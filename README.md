@@ -70,6 +70,12 @@ The community version uses weak algorithms: 2048-bit RSA and 128-bit AES, fair e
 
 # Additional options
 There are additional settings that could be passed to Teleporta by the commonly used -Dparameter=value mechanism.
+Also possible to define all options in the config file `teleporta.properties`, but without `-D` prefix:
+```
+appDebug=true
+clipboard=true
+relayUrl=http://majestic12:8989/testseed
+```
 
 Enable debug output:
 ```
