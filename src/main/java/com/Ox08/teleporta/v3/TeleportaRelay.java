@@ -203,22 +203,20 @@ public class TeleportaRelay {
             final byte[] buffer = new byte[4096];
             try (ZipOutputStream zout = new ZipOutputStream(httpExchange.getResponseBody());
                  FileInputStream in = new FileInputStream(jarFile)) {
-                zout.putNextEntry(new ZipEntry("/teleporta/"));
-                zout.closeEntry();
-                zout.putNextEntry(new ZipEntry("/teleporta/" + jarFile.getName()));
+                zout.putNextEntry(new ZipEntry("teleporta/" + jarFile.getName()));
                 // write app data
                 for (int n = in.read(buffer); n >= 0; n = in.read(buffer))
                     zout.write(buffer, 0, n);
                 zout.closeEntry();
                 // if we're able to detect self domain - add connection string
                 if (self != null) {
-                    zout.putNextEntry(new ZipEntry("/teleporta/teleporta.properties"));
+                    zout.putNextEntry(new ZipEntry("teleporta/teleporta.properties"));
                     final Properties p = new Properties();
                     p.setProperty("relayUrl", self);
                     p.store(zout, "Initial Teleporta Server settings");
                     zout.closeEntry();
+                    zout.flush();
                 }
-                zout.finish();
             }
         }
 
