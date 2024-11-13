@@ -78,10 +78,10 @@ public class TeleportaClient {
         System.setProperty("useLockFile", "true");
         System.setProperty("dumbWatcher", "true");
         System.setProperty("allowOutgoing","false");
-        init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa", true);
+        init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa", true,false);
     }
 
-    public static void init(String relayUrl, boolean allowClipboard) throws Exception {
+    public static void init(String relayUrl, boolean allowClipboard,boolean clearOutgoing) throws Exception {
         // create teleporta client's home folder
         final File teleportaHome = checkCreateHomeFolder("teleporta"),
                 inputDir = new File(teleportaHome, "from"), // for incoming files
@@ -90,9 +90,6 @@ public class TeleportaClient {
         // check if we allow outgoing files on this portal
         final boolean allowOutgoing =
                 Boolean.parseBoolean(System.getProperty("allowOutgoing", "true")),
-                clearOutgoing =
-                Boolean.parseBoolean(System.getProperty("clearOutgoing", "false")),
-
                 // check for 'lock' mode
                 useLockFile = Boolean.parseBoolean(System.getProperty("useLockFile", "false"));
 

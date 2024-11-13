@@ -51,7 +51,7 @@ public class TeleportaRelay {
         System.setProperty("javax.net.debug", "all");
         System.setProperty("seed", "testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa");
         // System.setProperty("privateRelay","true");
-        init(false);
+        init(false,false);
     }
 
     /**
@@ -59,11 +59,12 @@ public class TeleportaRelay {
      *
      * @throws Exception on I/O errors
      */
-    public static void init(boolean allowClipboard) throws Exception {
+    public static void init(boolean allowClipboard,boolean clearOutgoing) throws Exception {
         final int port = Integer.parseInt(System.getProperty("appPort", "8989"));
         final File teleportaHome = checkCreateHomeFolder("teleporta-relay");
-        deleteRecursive(teleportaHome, false);
-
+        if (clearOutgoing) {
+            deleteRecursive(teleportaHome, false);
+        }
         // We need to detect own jar location and pass full path as global variable to 'RespondSelfHandler'
         final CodeSource codeSource = TeleportaRelay.class.getProtectionDomain().getCodeSource();
         final File jarFile;

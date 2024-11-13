@@ -93,10 +93,13 @@ public class Main {
         // clipboard needs to be enabled both on relay and portal sides
         final boolean enableClipboard =
                 Boolean.parseBoolean(System.getProperty("clipboard", "false"));
+        final boolean clearOutgoing =
+                Boolean.parseBoolean(System.getProperty("clearOutgoing", "false"));
+
         if (relay) {
-            TeleportaRelay.init(enableClipboard);
+            TeleportaRelay.init(enableClipboard,clearOutgoing);
         } else {
-            TeleportaClient.init(relayUrl, enableClipboard);
+            TeleportaClient.init(relayUrl, enableClipboard,clearOutgoing);
         }
     }
     static void printHelp() throws IOException {
