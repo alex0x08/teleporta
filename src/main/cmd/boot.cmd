@@ -2,6 +2,25 @@
 @echo off
 :: self script name
 set SELF_SCRIPT=%0
+:: do we have quotes in self name?
+set q=n
+:: on Windows you can run application without extension, so we need to detect full self path to run Java later
+if [^%SELF_SCRIPT:~-1%] == [^"] ( 
+	set ext=%SELF_SCRIPT:~-4,3%
+	set q=y
+ ) else ( 
+	set ext=%SELF_SCRIPT:~-3%
+ )
+:: add .cmd extension to self name, if user started us without it 
+if /i not "%ext%" == "cmd" ( 
+	:: deal with quotes
+	if "%q%" == "y" ( 
+		set SELF_SCRIPT=%SELF_SCRIPT:~0,-1%.cmd"
+	) else ( 
+		set SELF_SCRIPT=%SELF_SCRIPT%.cmd
+	) 
+)
+
 :: path to unpacked JRE
 set UNPACKED_JRE_DIR=%UserProfile%\.jre
 :: path to unpacked JRE binary
@@ -49,9 +68,11 @@ tar -xf %TEMP%\jre.zip -C %UNPACKED_JRE_DIR%
 set JRE=%UNPACKED_JRE_DIR%\jre\bin\java.exe
 
 :RunJava
-echo Using JRE %JAVA_VERSION% from %JRE% 
+echo %JRE% 
 :: note: there should be exact 2 spaces between start and %JRE% !
-start  %JRE% -jar %SELF_SCRIPT% %*
+::pause
+chcp 65001
+%JRE% -Dfile.encoding=UTF-8 -jar %SELF_SCRIPT% %*
 goto :EOF
 
 :ExitError

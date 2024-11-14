@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 package com.Ox08.teleporta.v3;
+import com.Ox08.teleporta.v3.messages.TeleportaError;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
@@ -41,7 +43,7 @@ public class SystemInfo {
 
     public void load() {
         if (wasLoaded) {
-            throw new RuntimeException("Already initalized");
+            throw TeleportaError.withError(0x7270);
         }
         try (InputStream in = getClass().getResourceAsStream("/release.properties")) {
             final Properties p = new Properties();
@@ -51,7 +53,7 @@ public class SystemInfo {
             this.buildVersion = p.getProperty("build.version", "unknown");
             wasLoaded = true;
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw TeleportaError.withError(0x7271,e);
         }
     }
     public static final SystemInfo SI = new SystemInfo();

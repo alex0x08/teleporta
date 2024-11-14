@@ -1,4 +1,6 @@
 package com.Ox08.teleporta.v3;
+import com.Ox08.teleporta.v3.messages.TeleportaError;
+
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -35,7 +37,8 @@ public class TeleCrypt {
             encryptCipher.init(Cipher.DECRYPT_MODE, privateKey);
             return encryptCipher.doFinal(data);
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            // error decrypting session key
+            throw TeleportaError.withError(0x7014,e);
         }
     }
     /**
@@ -53,7 +56,8 @@ public class TeleCrypt {
             encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
             return encryptCipher.doFinal(data);
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            // error encrypting session key
+            throw TeleportaError.withError(0x7015,e);
         }
     }
     /**
@@ -83,7 +87,8 @@ public class TeleCrypt {
             final byte[] fileIv = new byte[16];
             // read stored IV
             if (inputStream.read(fileIv)!=16) {
-                throw new RuntimeException("Incorrect file header: < IV size");
+                // incorrect IV size
+                throw TeleportaError.withError(0x7012);
             }
             final Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
@@ -95,7 +100,7 @@ public class TeleCrypt {
                     outputStream.write(buffer, 0, bytesRead);
                 }
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw TeleportaError.withError(0x7008,e);
         }
     }
     /**
@@ -126,7 +131,7 @@ public class TeleCrypt {
             }
             cipherOut.doFinal();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw TeleportaError.withError(0x7007,e);
         }
     }
     /**
@@ -151,7 +156,8 @@ public class TeleCrypt {
             final byte[] fileIv = new byte[16];
             // read stored IV
             if (inputStream.read(fileIv)!=16) {
-                throw new RuntimeException("Incorrect file header: < IV size");
+                // incorrect IV size
+                throw TeleportaError.withError(0x7012);
             }
             final Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
@@ -171,7 +177,7 @@ public class TeleCrypt {
             }
             cipherOut.doFinal();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw TeleportaError.withError(0x7013,e);
         }
     }
 

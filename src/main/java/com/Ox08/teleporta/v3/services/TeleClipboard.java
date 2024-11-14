@@ -1,4 +1,8 @@
 package com.Ox08.teleporta.v3.services;
+import com.Ox08.teleporta.v3.Main;
+import com.Ox08.teleporta.v3.messages.TeleportaError;
+import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
+
 import java.awt.*;
 import java.awt.datatransfer.*;
 import java.util.logging.Level;
@@ -27,14 +31,13 @@ public class TeleClipboard {
      */
     public synchronized void setClipboard(String data) {
         if (data==null || data.isEmpty()) {
+            // do not react on empty clipboard, ever
             return;
         }
         if (data.length() > MAX_CLIPBOARD_LEN) {
-            LOG.warning("Clipboard data overload");
+            // clipboard data overload
+            LOG.warning(TeleportaError.messageFor(0x7223,data.length(), MAX_CLIPBOARD_LEN));
             return;
-        }
-        if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(String.format("Setting clipboard %d", data.length()));
         }
         this.listener.ignoreEvent();
         this.cb.setContents(new StringSelection(data), null);
@@ -67,11 +70,12 @@ public class TeleClipboard {
                         return;
                     }
                     if (data.length() > MAX_CLIPBOARD_LEN) {
-                        LOG.warning("Clipboard data overload (2)");
+                        LOG.warning(TeleportaError.messageFor(0x7223,data.length(), MAX_CLIPBOARD_LEN));
                         return;
                     }
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(String.format("Received clipboard %d", data.length()));
+                        LOG.fine(String.format(TeleportaSysMessage.of(
+                                "teleporta.system.message.receivedClipboard", data.length())));
                     }
                     handler.handle(data);
 

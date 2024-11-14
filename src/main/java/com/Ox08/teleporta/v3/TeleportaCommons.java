@@ -1,4 +1,6 @@
 package com.Ox08.teleporta.v3;
+import com.Ox08.teleporta.v3.messages.TeleportaError;
+
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
@@ -49,12 +51,12 @@ public class TeleportaCommons {
     public static char[] extractSeed(String seed) {
         if (seed == null || seed.isEmpty()) {
             // cannot extract seed
-            throw new RuntimeException("Empty seed!");
+            throw TeleportaError.withError(0x7215);
         }
         seed = seed.toLowerCase().replaceAll("/", "");
         if (seed.isEmpty()) {
             // second check that cannot extract seed
-            throw new RuntimeException("Empty seed!");
+            throw TeleportaError.withError(0x7215);
         }
         // remove random garbage first
         if (seed.length() > 22) {
@@ -142,9 +144,8 @@ public class TeleportaCommons {
     }
     public static void checkCreateFolder(File folder) {
         if ((!folder.exists() || !folder.isDirectory()) && !folder.mkdirs()) {
-            throw new IllegalStateException(
-                    String.format("Cannot create directory: %s ",
-                            folder.getAbsolutePath()));
+            throw TeleportaError.withError(0x6109,
+                            folder.getAbsolutePath());
         }
     }
 
@@ -158,7 +159,8 @@ public class TeleportaCommons {
     public static void deleteRecursive(File file, boolean removeParent) {
         if (file.isFile()) {
             if (!file.delete()) {
-                LOG.warning(String.format("cannot delete file: %s",
+                // cannot delete file
+                LOG.warning(TeleportaError.messageFor(0x6106,
                         file.getAbsolutePath()));
             }
             return;
@@ -171,7 +173,7 @@ public class TeleportaCommons {
         // java allows to remove folder only if its empty
         if ((files == null || files.length == 0)) {
             if (!file.delete()) {
-                LOG.warning(String.format("cannot delete folder: %s",
+                LOG.warning(TeleportaError.messageFor(0x6110,
                         file.getAbsolutePath()));
             }
             return;
@@ -180,7 +182,7 @@ public class TeleportaCommons {
             deleteRecursive(f, true);
         }
         if (removeParent && !file.delete()) {
-            LOG.warning(String.format("cannot delete folder: %s", file.getAbsolutePath()));
+            LOG.warning(TeleportaError.messageFor(0x6110, file.getAbsolutePath()));
         }
     }
 

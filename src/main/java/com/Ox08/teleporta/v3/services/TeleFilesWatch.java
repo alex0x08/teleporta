@@ -1,5 +1,7 @@
 package com.Ox08.teleporta.v3.services;
 import com.Ox08.teleporta.v3.TeleportaCommons;
+import com.Ox08.teleporta.v3.messages.TeleportaError;
+import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -42,7 +44,7 @@ public class TeleFilesWatch {
         this.ses = Executors.newScheduledThreadPool(3); //2 tasks + 1 backup
         boolean useDumbWatcher = Boolean.parseBoolean(System.getProperty("dumbWatcher", "false"));
         if (useLockFile) {
-            LOG.info("Using lock files, you need to remove 'lock' file manually to trigger uploading");
+            LOG.info(TeleportaSysMessage.of("teleporta.system.message.usingLockFiles"));
             lockFiles =new HashMap<>();
             processingAfterUnlock = new LinkedHashSet<>();
             registerUnlockProcessingWatcher();
@@ -57,7 +59,7 @@ public class TeleFilesWatch {
     }
     public synchronized void start() {
         if (running) {
-            LOG.warning("WatchService is already running!");
+            LOG.warning(TeleportaError.messageFor(0x7224));
             return;
         }
         running = true;
@@ -139,7 +141,7 @@ public class TeleFilesWatch {
                     continue;
                 }
                 if (LOG.isLoggable(Level.FINE)) {
-                    LOG.fine(String.format("Processing upload %s",
+                    LOG.fine(TeleportaSysMessage.of("teleporta.system.message.processingFile",
                             p.getKey().toString()));
                 }
                 // process only first 1000 files at once
@@ -165,7 +167,7 @@ public class TeleFilesWatch {
                         }
                         // print out event
                         if (LOG.isLoggable(Level.FINE)) {
-                            LOG.fine(String.format("adding %s", f.getName()));
+                            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.addEvent", f.getName()));
                         }
                         synchronized (l) {
                             processingAfterUnlock.add(f);
@@ -241,8 +243,7 @@ public class TeleFilesWatch {
             try {
                 ws = FileSystems.getDefault().newWatchService();
             } catch (IOException ex) {
-                throw new RuntimeException(String.format("Cannot create WatchService:%s",
-                        ex.getMessage()), ex);
+                throw TeleportaError.withError(0x7225, ex);
             }
         }
 
@@ -250,7 +251,7 @@ public class TeleFilesWatch {
         public void register(Path dir) {
             // for normal WatcherService
             if (keys.containsValue(dir)) {
-                LOG.warning(String.format("cannot register key: %s  - already exists", dir));
+                LOG.warning(TeleportaError.messageFor(0x7226, dir));
                 return;
             }
             try {
@@ -259,16 +260,16 @@ public class TeleFilesWatch {
                 if (LOG.isLoggable(Level.FINE)) {
                     final Path prev = keys.get(key);
                     if (prev == null) {
-                        LOG.fine(String.format("register: %s", dir));
+                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.registerWatcher", dir));
                     } else if (!dir.equals(prev)) {
-                        LOG.fine(String.format("update: %s -> %s", prev, dir));
+                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.updateWatcher", prev, dir));
                     }
                 }
                 synchronized (l) {
                     keys.put(key, dir);
                 }
             } catch (IOException ex) {
-                throw new RuntimeException(ex);
+                throw TeleportaError.withError(0x6102,ex);
             }
         }
 
@@ -310,7 +311,8 @@ public class TeleFilesWatch {
                     }
                     final Path dir = keys.get(key);
                     if (dir == null) {
-                        LOG.warning("WatchKey not recognized!");
+                        // WatchKey not recognized!
+                        LOG.warning(TeleportaError.messageFor(0x7267));
                         continue;
                     }
                     for (WatchEvent<?> event : key.pollEvents()) {
@@ -329,10 +331,10 @@ public class TeleFilesWatch {
                             }
                             final File f = child.toFile();
                             // means 'lock' file removed
-                            if ("lock".equals(f.getName())) {
+                            if ("lock".equalsIgnoreCase(f.getName())) {
                                 lockFiles.put(dir,DirState.PROCESSING);
                                 if (LOG.isLoggable(Level.FINE)) {
-                                    LOG.fine(String.format("Lock file removed, trigger uploading: %s: %s: %s",
+                                    LOG.fine(TeleportaSysMessage.of("teleporta.system.message.lockFileRemoved",
                                             event.kind().name(), child, name));
                                 }
                             }
@@ -341,7 +343,8 @@ public class TeleFilesWatch {
                             if (useLockFile && lockFiles.containsKey(dir)
                                     && lockFiles.get(dir) != DirState.READY) {
                                 if (LOG.isLoggable(Level.FINE)) {
-                                    LOG.fine(String.format("Folder is locked - no processing event %s: %s: %s",
+                                    // Folder is locked - no processing event
+                                    LOG.fine(TeleportaSysMessage.of("teleporta.system.message.folderLocked",
                                             event.kind().name(), child, name));
                                 }
                                 continue;
@@ -352,7 +355,8 @@ public class TeleFilesWatch {
                                 continue;
                             }
                             if (!child.getParent().toFile().exists()) {
-                                LOG.warning(String.format("parent deleted: %s",
+                                // parent folder deleted
+                                LOG.warning(TeleportaError.messageFor(0x7268,
                                         child.getParent()));
                                 // ignore event if parent folder was somehow removed
                                 continue;
@@ -364,12 +368,13 @@ public class TeleFilesWatch {
                                 final File lock = new File(child.getParent().toFile(),"lock");
                                 try {
                                     if (!lock.createNewFile()) {
-                                        LOG.warning(String.format("Cannot create lock file: %s",
+                                        // cannot create lock file
+                                        LOG.warning(TeleportaError.messageFor(0x7269,
                                                 lock.getAbsolutePath()));
                                     } else {
                                         lockFiles.put(dir,DirState.LOCKED);
                                         if (LOG.isLoggable(Level.FINE)) {
-                                            LOG.fine(String.format("Created lock file %s",
+                                            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.lockFileCreated",
                                                     lock.getAbsolutePath()));
                                         }
                                     }
@@ -407,18 +412,18 @@ public class TeleFilesWatch {
             // register (add) path to custom list
             if (!paths.contains(dir)) {
                 paths.add(dir);
-                LOG.fine(String.format("register: %s", dir));
+                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.registerWatcher", dir));
             }
         }
         @Override
         public void unregister(Path dir) {
             // for 'dumb' watcher, we don't register in WatcherService and use our own list instead.
             paths.remove(dir);
-            LOG.fine(String.format("unregister: %s", dir));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.unregisterWatcher", dir));
         }
         @Override
         public void start() {
-            LOG.warning("Using non-native dumb&slow file watcher.");
+            LOG.warning(TeleportaSysMessage.of("teleporta.system.message.usingDumbWatcher"));
             ses.scheduleAtFixedRate(() -> {
                 // cleanup processing set
                 processing.removeIf(f -> !f.exists());
@@ -430,7 +435,7 @@ public class TeleFilesWatch {
                         if (!lock.exists()) {
                             lockFiles.put(p,DirState.PROCESSING);
                             if (LOG.isLoggable(Level.FINE)) {
-                                LOG.fine(String.format("Lock file removed, trigger uploading: %s",
+                                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.lockFileRemoved",
                                         p));
                             }
                         }
@@ -450,7 +455,7 @@ public class TeleFilesWatch {
                             if (useLockFile && lockFiles!=null && lockFiles.containsKey(p)
                                     && lockFiles.get(p) != DirState.READY) {
                                 if (LOG.isLoggable(Level.FINE)) {
-                                    LOG.fine(String.format("Folder is locked - no processing event %s: %s",
+                                    LOG.fine(TeleportaSysMessage.of("teleporta.system.message.folderLocked",
                                             p, f.getName()));
                                 }
                                 break;
@@ -474,18 +479,20 @@ public class TeleFilesWatch {
                             }
                             if ( useLockFile && lockFiles!=null) {
                                 if (LOG.isLoggable(Level.FINE)) {
-                                    LOG.fine(String.format("Locking on %s",
+                                    LOG.fine(TeleportaSysMessage.of(
+                                            "teleporta.system.message.lockFileCreated",
                                             f.getAbsolutePath()));
                                 }
                                 final File lock = new File(p.toFile(),"lock");
                                 try {
                                     if (!lock.createNewFile()) {
-                                        LOG.warning(String.format("Cannot create lock file: %s",
+                                        LOG.warning(TeleportaError.messageFor(0x7269,
                                                 lock.getAbsolutePath()));
                                     } else {
                                         lockFiles.put(p,DirState.LOCKED);
                                         if (LOG.isLoggable(Level.FINE)) {
-                                            LOG.fine(String.format("Created lock file %s",
+                                            LOG.fine(TeleportaSysMessage.of(
+                                                    "teleporta.system.message.lockFileCreated",
                                                     lock.getAbsolutePath()));
                                         }
                                     }
@@ -496,7 +503,8 @@ public class TeleFilesWatch {
                             }
                             // print out event
                             if (LOG.isLoggable(Level.FINE)) {
-                                LOG.fine(String.format("adding %s", f.getName()));
+                                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.addEvent",
+                                        f.getName()));
                             }
                             synchronized (l) {
                                 processing.add(f);

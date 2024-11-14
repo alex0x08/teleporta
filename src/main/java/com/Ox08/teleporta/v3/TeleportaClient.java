@@ -1,5 +1,7 @@
 package com.Ox08.teleporta.v3;
 
+import com.Ox08.teleporta.v3.messages.TeleportaError;
+import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
 import com.Ox08.teleporta.v3.services.TeleClipboard;
 import com.Ox08.teleporta.v3.services.TeleFilesWatch;
 import com.Ox08.teleporta.v3.services.TeleLnk;
@@ -80,8 +82,24 @@ public class TeleportaClient {
         System.setProperty("allowOutgoing","false");
         init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa", true,false);
     }
-
+    /**
+     * Main function, that starts Teleporta client
+     * @param relayUrl
+     *              full URL for remote Teleporta relay
+     * @param allowClipboard
+     *          if true - allow clipboard mode
+     * @param clearOutgoing
+     *          if true - wipe outgoing folder on start
+     * @throws Exception
+     */
     public static void init(String relayUrl, boolean allowClipboard,boolean clearOutgoing) throws Exception {
+        // remove all spaces
+        relayUrl = relayUrl
+                .replaceAll("\\s+","");
+        // remove dot, if found as last element
+        if (relayUrl.endsWith(".")) {
+            relayUrl = relayUrl.substring(0,relayUrl.length()-1);
+        }
         // create teleporta client's home folder
         final File teleportaHome = checkCreateHomeFolder("teleporta"),
                 inputDir = new File(teleportaHome, "from"), // for incoming files
@@ -140,12 +158,12 @@ public class TeleportaClient {
         final TeleportaClient c = new TeleportaClient(ctx);
         // register on relay
         if (!c.register()) {
-            System.err.printf("Cannot register on relay: %s%n", relayUrl);
+            TeleportaError.printErr(0x6001, relayUrl);
             System.exit(1);
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(String.format("registered session %s", ctx.sessionId));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.portalRegistered", ctx.sessionId));
         }
         // load portals list, don't touch watches initially, because output folder should be empty
         c.reloadPortals(false);
@@ -172,7 +190,8 @@ public class TeleportaClient {
                 }
                 // check if portal exists on client side first
                 if (!ctx.portalNames.containsKey(receiver_name)) {
-                    LOG.warning(String.format("unknown portal: %s", receiver_name));
+                    // unknown portal
+                    LOG.warning(TeleportaError.messageFor(0x6108, receiver_name));
                     return;
                 }
                 // get remote portal's id
@@ -211,11 +230,10 @@ public class TeleportaClient {
                 final String[] files = c.getPending();
                 if (c.networkError) {
                     c.networkError = false; // first successful request turns this switch off
-                    //c.sendAllNotDelivered(outputDir,ctx.useLockFile);
                 }
                 if (files != null) {
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(String.format("found %d pending files", files.length));
+                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.foundPendingFiles", files.length));
                     }
                     // there could be only few files always, no need for dir streaming
                     for (String file : files) {
@@ -266,7 +284,7 @@ public class TeleportaClient {
                 reloadPortals(true);
             }
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(String.format("incorrect relay response %d ", code));
+                LOG.fine(TeleportaError.messageFor(0x7002, code));
             }
             return null;
         }
@@ -314,7 +332,7 @@ public class TeleportaClient {
         }
         int total = Integer.parseInt(portals.getProperty("total"));
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(String.format("found %d portals", total));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.foundPortals", total));
         }
         final File outputDir = new File(ctx.storageDir, "to");
         final Set<String> prevPortals = new HashSet<>(ctx.portalNames.keySet());
@@ -337,7 +355,7 @@ public class TeleportaClient {
         }
         if (ctx.allowOutgoing && updateWatcher && !ctx.portalNames.isEmpty()) {
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(String.format("updating watchers for %d portals",
+                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.updatingFolderWatchers",
                         ctx.portalNames.size()));
             }
             for (String n : prevPortals) {
@@ -346,7 +364,7 @@ public class TeleportaClient {
                     watch.unregister(f.toPath());
                     deleteRecursive(f, true);
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(String.format("removed non-existing portal %s ", n));
+                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.removedExpiredPortal", n));
                     }
                 }
             }
@@ -371,7 +389,8 @@ public class TeleportaClient {
         final HttpURLConnection http = (HttpURLConnection) con;
         final int code = http.getResponseCode();
         if (code != HttpURLConnection.HTTP_OK) {
-            LOG.warning(String.format("incorrect relay response: %d", code));
+            // incorrect relay response
+            LOG.warning(TeleportaError.messageFor(0x7002, code));
             http.disconnect();
             return out;
         }
@@ -400,7 +419,7 @@ public class TeleportaClient {
      */
     public void sendClipboard(String data) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(String.format("sending clipboard contents %d ", data.length()));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendingClipboard", data.length()));
         }
         final String part = decodeUrl(ctx.relayUrl, "cb-upload");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?from=%s",
@@ -423,17 +442,20 @@ public class TeleportaClient {
             tc.encryptData(key, in, out);
             out.flush();
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
-            throw new RuntimeException(e);
+            // Error encrypting clipboard data
+            throw TeleportaError.withError(0x7214,e);
+
         }
         // MUST be called, otherwise request will not be executed!
         int code = http.getResponseCode();
         if (code != HttpURLConnection.HTTP_OK) {
-            LOG.warning(String.format("incorrect relay response: %d", code));
+            // incorrect relay response
+            LOG.warning(TeleportaError.messageFor(0x7002, code));
             http.disconnect();
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(String.format("clipboard sent: %s ", data.length()));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardSent", data.length()));
         }
         http.disconnect();
     }
@@ -450,7 +472,7 @@ public class TeleportaClient {
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(String.format("sending file file %s ", file.getAbsolutePath()));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendingFile", file.getAbsolutePath()));
         }
         final String part = decodeUrl(ctx.relayUrl, "file-upload");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?from=%s&to=%s",
@@ -475,7 +497,8 @@ public class TeleportaClient {
             final byte[] enc = tc.encryptKey(key.getEncoded(), pk);
             props.setProperty("fileKey", toHex(enc, 0, 0));
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            // Error creating session key
+            throw TeleportaError.withError(0x7213,e);
         }
         // note: if file is directory - we create temp archive and then
         // encrypt & send it instead of each file in folder
@@ -493,22 +516,22 @@ public class TeleportaClient {
             // MUST be called, otherwise request will not be executed!
             int code = http.getResponseCode();
             if (code != HttpURLConnection.HTTP_OK) {
-                LOG.warning(String.format("incorrect relay response: %d", code));
+                LOG.warning(TeleportaError.messageFor(0x7002, code));
                 http.disconnect();
                 return;
             }
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(String.format("file sent: %s ", file.getAbsolutePath()));
+                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileSent", file.getAbsolutePath()));
             }
         } finally {
             if (file.isFile() && !file.delete()) {
-                LOG.warning(String.format("cannot delete file: %s",
+                LOG.warning(TeleportaError.messageFor(0x6106,
                         file.getAbsolutePath()));
             } else if (file.isDirectory()) {
                 deleteRecursive(file, true);
             }
             if (packedF != null && !packedF.delete()) {
-                LOG.warning(String.format("cannot delete temp file: %s",
+                LOG.warning(TeleportaError.messageFor(0x6107,
                         packedF.getAbsolutePath()));
             }
         }
@@ -522,7 +545,7 @@ public class TeleportaClient {
      */
     public void downloadClipboard() throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine("downloading clipboard ");
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.downloadingClipboard"));
         }
         final String part = decodeUrl(ctx.relayUrl, "cb-download");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?to=%s",
@@ -533,7 +556,7 @@ public class TeleportaClient {
         final HttpURLConnection http = (HttpURLConnection) con;
         int code = http.getResponseCode(); // execute request
         if (code != HttpURLConnection.HTTP_OK) {
-            LOG.warning(String.format("incorrect relay response: %d", code));
+            LOG.warning(TeleportaError.messageFor(0x7002, code));
             http.disconnect();
             return;
         }
@@ -547,7 +570,7 @@ public class TeleportaClient {
             tc.decryptData(rkey, bin, bout);
             clip.setClipboard(bout.toString());
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(String.format("clipboard set: %d ", bout.size()));
+                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardUpdated", bout.size()));
             }
         }
         http.disconnect();
@@ -561,7 +584,7 @@ public class TeleportaClient {
      */
     public void downloadFile(String fileId) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(String.format("downloading file %s ", fileId));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.downloadingFile",fileId));
         }
         final String part = decodeUrl(ctx.relayUrl, "file-download");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?to=%s&file=%s",
@@ -573,7 +596,8 @@ public class TeleportaClient {
         int code = http.getResponseCode();
         // check for basic HTTP codes first
         if (code != HttpURLConnection.HTTP_OK) {
-            LOG.warning(String.format("incorrect relay response: %d", code));
+            // Unexpected relay response
+            LOG.warning(TeleportaError.messageFor(0x7002, code));
             http.disconnect();
             return;
         }
@@ -596,7 +620,8 @@ public class TeleportaClient {
                             type = props.getProperty("type"), // content type (file or folder)
                             fileKey = props.getProperty("fileKey"); // unique file key
                     if (!ctx.portals.containsKey(from)) {
-                        LOG.warning(String.format("portal not found : %s", from));
+                        // Portal not found
+                        LOG.warning(TeleportaError.messageFor(0x6108, from));
                         continue;
                     }
                     // get sender's portal
@@ -611,7 +636,8 @@ public class TeleportaClient {
                     // if it's already exist - delete
                     if (out.exists()) {
                         if (out.isFile() && !out.delete()) {
-                            LOG.warning(String.format("cannot delete existing file : %s",
+                            //cannot delete existing file
+                            LOG.warning(TeleportaError.messageFor(0x6106,
                                     out.getAbsolutePath()));
                         }
                         if (out.isDirectory()) {
@@ -639,7 +665,8 @@ public class TeleportaClient {
                             }
                             // now remove temp file (archive itself)
                             if (!outz.delete()) {
-                                LOG.warning(String.format("cannot delete temp file: %s",
+                                // Cannot delete temp file
+                                LOG.warning(TeleportaError.messageFor(0x6107,
                                         outz.getAbsolutePath()));
                             }
                             break;
@@ -654,7 +681,8 @@ public class TeleportaClient {
                         }
                     }
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(String.format("file downloaded: %s ", out.getAbsolutePath()));
+                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileDownloaded",
+                                out.getAbsolutePath()));
                     }
                 }
             }
@@ -700,19 +728,21 @@ public class TeleportaClient {
         if (relayPublicKeyFile != null) {
             final File k = new File(relayPublicKeyFile);
             if (!k.isFile() || !k.canRead()) {
-                System.err.printf("Provided relay key file is not readable: %s", relayPublicKeyFile);
+                //Provided relay key file is not readable:
+                TeleportaError.printErr(0x606,relayPublicKeyFile);
                 return false;
             }
             // stupid check for completely incorrect key file
             if (k.length() < 5 || k.length() > 4096) {
-                System.err.printf("Provided relay key file corrupt or empty: %s", relayPublicKeyFile);
+                // Provided relay key file corrupt or empty
+                TeleportaError.printErr(0x6005,relayPublicKeyFile);
                 return false;
             }
             // try parse it
             relayKey = parseRelayPublicKey(Files.readAllBytes(k.toPath()));
 
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(String.format("parsed relay key %s", relayKey));
+                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.parsedRelayKey",relayKey));
             }
             try {
                 // decode public key
@@ -727,7 +757,7 @@ public class TeleportaClient {
                 props.setProperty("hello", toHex(enc, 0, 0));
                 privateRelay = true;
             } catch (Exception e) {
-                throw new RuntimeException("Corrupt relay key", e);
+                throw TeleportaError.withError(0x6004, e);
             }
         } else {
             relayKey = null;
@@ -742,7 +772,7 @@ public class TeleportaClient {
         // check HTTP status
         if (code != HttpURLConnection.HTTP_OK) {
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(String.format("incorrect relay response: %d", code));
+                LOG.fine(TeleportaError.messageFor(0x7002,code));
             }
             http.disconnect();
             return false;
@@ -767,23 +797,25 @@ public class TeleportaClient {
             // for non-private relays - copy key from relay response
             ctx.relayPublicKey = resp.getProperty("publicKey", null);
             if (ctx.relayPublicKey == null || ctx.relayPublicKey.isEmpty()) {
-                System.err.printf("Relay key is empty: %s%n", ctx.relayUrl);
+                // relay key is empty message
+                TeleportaError.printErr(0x7212,ctx.relayUrl);
                 return false;
             }
         }
         // could be a bug there
         if (ctx.sessionId == null || ctx.sessionId.isEmpty()) {
-            System.err.printf("Got empty session id from relay: %s%n", ctx.relayUrl);
+            // got empty session id from relay
+            TeleportaError.printErr(0x7211, ctx.relayUrl);
             return false;
         }
         http.disconnect();
-        LOG.info("Connected to relay.");
+        LOG.info(TeleportaSysMessage.of("teleporta.system.message.connectedToRelay"));
         return true;
     }
 
     public void sendAllNotDelivered(File outputDir, boolean useLockFile) {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine("sending non-delivered files");
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendNonDeliveredFiles"));
         }
         for (String n : ctx.portalNames.keySet()) {
             // get remote portal's id
@@ -813,11 +845,12 @@ public class TeleportaClient {
                     try {
                         sendFile(ff, id);
                     } catch (Exception ee) {
-                        LOG.log(Level.WARNING,ee.getMessage(), ee);
+                        LOG.warning(TeleportaError.messageFor(0x7006,ee));
+
                     }
                 }
             } catch (IOException e) {
-                LOG.log(Level.WARNING,e.getMessage(), e);
+                LOG.warning(TeleportaError.messageFor(0x7006,e));
             }
         }
     }
@@ -840,7 +873,7 @@ public class TeleportaClient {
                 }
             }
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw TeleportaError.withError(0x7004,e);
         }
     }
 
@@ -870,12 +903,13 @@ public class TeleportaClient {
                         Files.copy(path, zos);
                         zos.closeEntry();
                     } catch (IOException e) {
+                        // throw this exception to parent
                         throw new RuntimeException(e);
                     }
                 });
             }
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw TeleportaError.withError(0x7005,e);
         }
         return out;
     }
@@ -892,7 +926,8 @@ public class TeleportaClient {
         // If we read less data than key size - key is broken
         // This is done for simplicity
         if (c != TeleCrypt.SESSION_KEY_LEN) {
-            LOG.warning("Key corrupted!");
+            // key corrupted message
+            LOG.warning(TeleportaError.messageFor(0x7009));
             return null;
         }
         // try to decrypt actual key, using own private
@@ -942,7 +977,7 @@ public class TeleportaClient {
         try {
             hostName = InetAddress.getLocalHost().getHostName();
         } catch (UnknownHostException e) {
-            throw new RuntimeException(e);
+            throw TeleportaError.withError(0x6105,e);
         }
         // if template defined - try it
         final String portalNameTemplate = System.getProperty("portalNameTemplate", null);

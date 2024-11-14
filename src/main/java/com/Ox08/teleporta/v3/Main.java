@@ -1,9 +1,13 @@
 package com.Ox08.teleporta.v3;
+import com.Ox08.teleporta.v3.messages.TeleportaError;
+import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 import static com.Ox08.teleporta.v3.TeleportaCommons.setDebugLogging;
 /**
@@ -14,8 +18,7 @@ import static com.Ox08.teleporta.v3.TeleportaCommons.setDebugLogging;
  */
 public class Main {
     public static void main(String[] args) throws Exception {
-        // load build info
-        SystemInfo.SI.load();
+
         // try to load config file first (if exist)
         final File configFile = new File("teleporta.properties");
         boolean configLoaded = false;
@@ -35,9 +38,11 @@ public class Main {
                 configLoaded = true;
             }
         }
-        // if no arguments provided and no config found - just print help
+
+        // if no arguments provided and no config found - just start default relay
         if (args.length == 0 && !configLoaded) {
-            printHelp();
+            //printHelp();
+            startDefaultRelay();
             return;
         }
         // cleaned arguments, without key-value parameters
@@ -51,11 +56,20 @@ public class Main {
             }
             cleaned.add(a);
         }
-        // if there are no required params provided - print help and exit
+        // check for user specified locale
+        setupLocale();
+
+        // if there are no required params provided - start default relay and exit
         if (cleaned.isEmpty() && ! configLoaded) {
-            printHelp();
+            //printHelp();
+            startDefaultRelay();
             return;
         }
+
+        // load build info, its done so lately because contains localized error messages now,
+        // so must be called after locale is set
+        SystemInfo.SI.load();
+
         // check if debug messages enabled
         final boolean debugMessages = Boolean
                 .parseBoolean(System.getProperty("appDebug", "false"));
@@ -67,7 +81,8 @@ public class Main {
         String relayUrl = cleaned.isEmpty() ?
                 System.getProperty("relayUrl",null) : cleaned.get(0);
         if (relayUrl == null || relayUrl.isEmpty()) {
-            printHelp();
+           // now we start default relay instead of printing help
+            startDefaultRelay();
             return;
         }
         relayUrl = relayUrl.toLowerCase();
@@ -102,6 +117,33 @@ public class Main {
             TeleportaClient.init(relayUrl, enableClipboard,clearOutgoing);
         }
     }
+
+    static void startDefaultRelay() throws Exception {
+        // load build info
+        SystemInfo.SI.load();
+        TeleportaRelay.init(false,false);
+    }
+    /**
+     * We need to make programmatic locale toggle, because standard way -Duser.country -Duser.language=
+     * works only if these arguments passed *before* -jar, not after
+     */
+    static void setupLocale() {
+        String lang = System.getProperty("lang",null);
+        // ignore completely if switch is not set
+        if (lang==null || lang.isEmpty()) {
+            return;
+        }
+        lang = lang.toLowerCase();
+        // we support only Russian and English for now
+        final Locale locale = lang.equals("ru") ? Locale.forLanguageTag("ru-RU") : Locale.US;
+        // set default locale
+        Locale.setDefault(locale);
+        // set locale for messages
+        TeleportaSysMessage.instance().setErrorLocale(locale);
+        // and for errors
+        TeleportaError.instance().setErrorLocale(locale);
+    }
+
     static void printHelp() throws IOException {
         System.out.println("Use as:");
         System.out.println("http://relay.url:port/seed (copy full url from relay output");
@@ -122,7 +164,9 @@ public class Main {
     static void printLogo(boolean relay) {
         final SystemInfo si = SystemInfo.SI;
         System.out.printf(TELE_LOGO,
-                relay? "Relay" : "Portal",
+                relay  ?TeleportaSysMessage.of("teleporta.system.message.teleportaRelayMode"):
+                        TeleportaSysMessage.of("teleporta.system.message.teleportaPortalMode"),
                 si.getBuildVersion(), si.getBuildNum(), si.getBuildTime());
     }
+
 }
