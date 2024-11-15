@@ -126,7 +126,7 @@ public class TeleportaRelay {
         final boolean selfDownload = Boolean
                 .parseBoolean(System.getProperty("selfDownload", "true"));
         if (selfDownload) {
-            LOG.info(TeleportaSysMessage.of("teleporta.system.message.selfDownloadsAllowed"));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.selfDownloadsAllowed"));
             server.createContext("/" + seed)
                     .setHandler(new RespondSelfHandler());
         }

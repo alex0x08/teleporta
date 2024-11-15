@@ -1,9 +1,10 @@
-rem(){ :;};rem '
+@rem(){ :;};@rem '
 @goto b
-';echo -n "a";
+';
+#echo -n "a";
 
 if [ -z "$BASH" ]; then
-echo -n "b"
+#echo -n "b"
 exec bash "$0" "$@"
 exit
 fi
@@ -23,11 +24,11 @@ function get_realpath {
 }
 
 try_download_java() {
-echo -n "c"
+#echo -n "c"
 
 UNPACKED_JRE=~/.jre/jre
 if [[ -f "$UNPACKED_JRE/bin/java" ]]; then
-    echo -n "d"
+    #echo -n "d"
     _JRE="$UNPACKED_JRE/bin/java"
     return 0
 fi
@@ -57,7 +58,7 @@ case $OS in
      ;;
 esac
 
-echo -n "e"
+#echo -n "e"
 #echo "3.2 Downloading for OS: $OS and arch: $ARCH"
 URL="https://nexus.nuiton.org/nexus/content/repositories/jvm/com/oracle/jre/1.8.121/jre-1.8.121-$OS-$ARCH.zip"
 #echo "Full url: $URL"
@@ -114,12 +115,12 @@ jdk_version() {
   echo "$result"
 }
 
-echo -n "f"
+#echo -n "f"
 if type -p java >/dev/null; then
-    echo -n "g"
+    #echo -n "g"
     _JRE=java
 elif [[ -n $JAVA_HOME ]] && [[ -x "$JAVA_HOME/bin/java" ]];  then
-    echo -n "h"
+    #echo -n "h"
     _JRE="$JAVA_HOME/bin/java"
 else
     echo -n "i"
@@ -133,7 +134,7 @@ then
     try_download_java
     #echo "2.2 Using JRE: $_JRE"
 fi
-echo ""
+#echo ""
 self=$(get_realpath "$0")
 $_JRE -jar "$self" "$@"
 exit

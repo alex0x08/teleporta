@@ -26,14 +26,14 @@ set UNPACKED_JRE_DIR=%UserProfile%\.jre
 :: path to unpacked JRE binary
 set UNPACKED_JRE=%UNPACKED_JRE_DIR%\jre\bin\java.exe
 
-IF exist %UNPACKED_JRE% (goto :RunJavaUnpacked)
+IF exist %UNPACKED_JRE% >NUL (goto :RunJavaUnpacked)
 
-where java 2>NUL
+where java 2 >NUL
 if "%ERRORLEVEL%"=="0" (call :JavaFound) else (call :DownloadJava)
 goto :EOF
 :JavaFound
 set JRE=java
-echo Java found in PATH, checking version..
+:: Java found in PATH, checking version..
 set JAVA_VERSION=0
 for /f "tokens=3" %%g in ('java -version 2^>^&1 ^| findstr /i "version"') do (
   set JAVA_VERSION=%%g
@@ -46,7 +46,6 @@ for /f "delims=.-_ tokens=1-2" %%v in ("%JAVA_VERSION%") do (
     set JAVA_VERSION=%%v
   )
 )
-
 if %JAVA_VERSION% LSS 11 (goto :DownloadJava) else (goto :RunJava)
 
 :DownloadJava
@@ -68,10 +67,9 @@ tar -xf %TEMP%\jre.zip -C %UNPACKED_JRE_DIR%
 set JRE=%UNPACKED_JRE_DIR%\jre\bin\java.exe
 
 :RunJava
-echo %JRE% 
-:: note: there should be exact 2 spaces between start and %JRE% !
+::echo %JRE% 
 ::pause
-chcp 65001
+chcp 65001 >NUL
 %JRE% -Dfile.encoding=UTF-8 -jar %SELF_SCRIPT% %*
 goto :EOF
 
