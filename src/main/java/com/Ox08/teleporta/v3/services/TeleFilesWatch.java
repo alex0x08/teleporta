@@ -88,6 +88,10 @@ public class TeleFilesWatch {
         // this task uses java's WatchService for fs monitoring
         watcher.start();
     }
+
+    public boolean isWatching(Path dir) {
+        return  watcher.isWatching(dir);
+    }
     public void unregister(Path dir) {
         // unregister lock, if using 'lock' files
         if (useLockFile) {
@@ -227,6 +231,7 @@ public class TeleFilesWatch {
     }
 
     public interface FolderWatcher {
+        boolean isWatching(Path dir);
         void register(Path dir);
         void unregister(Path dir);
         void start();
@@ -246,7 +251,10 @@ public class TeleFilesWatch {
                 throw TeleportaError.withError(0x7225, ex);
             }
         }
-
+        @Override
+        public boolean isWatching(Path dir) {
+            return keys.containsValue(dir);
+        }
         @Override
         public void register(Path dir) {
             // for normal WatcherService
@@ -407,6 +415,10 @@ public class TeleFilesWatch {
         private final Set<Path> paths  = new LinkedHashSet<>();
         private final Set<File> processing = new LinkedHashSet<>();
         private final Object l = new Object();
+        @Override
+        public boolean isWatching(Path dir) {
+            return paths.contains(dir);
+        }
         @Override
         public void register(Path dir) {
             // register (add) path to custom list

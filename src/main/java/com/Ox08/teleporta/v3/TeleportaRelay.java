@@ -54,7 +54,7 @@ public class TeleportaRelay {
         System.setProperty("javax.net.debug", "all");
         System.setProperty("seed", "testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa");
         // System.setProperty("privateRelay","true");
-        init(false,false);
+        init(false,false,true);
     }
 
     /**
@@ -62,7 +62,7 @@ public class TeleportaRelay {
      *
      * @throws Exception on I/O errors
      */
-    public static void init(boolean allowClipboard,boolean clearOutgoing) throws Exception {
+    public static void init(boolean allowClipboard,boolean clearOutgoing,boolean relayHasPortal) throws Exception {
         final int port = Integer.parseInt(System.getProperty("appPort", "8989"));
         final File teleportaHome = checkCreateHomeFolder("teleporta-relay");
         if (clearOutgoing) {
@@ -94,9 +94,27 @@ public class TeleportaRelay {
         // build runtime context
         final RelayRuntimeContext rc = new RelayRuntimeContext(teleportaHome,
                 rkp, privateRelay,allowClipboard);
+
+        final EmbeddedClient ec;
+        if (relayHasPortal) {
+            final boolean allowOutgoing =
+                    Boolean.parseBoolean(System.getProperty("allowOutgoing", "true")),
+                    // check for 'lock' mode
+                    useLockFile = Boolean.parseBoolean(System.getProperty("useLockFile", "false"));
+            EmbeddedClient.EmbeddedClientRuntimeContext ectx = new EmbeddedClient.EmbeddedClientRuntimeContext(
+                    allowClipboard,allowOutgoing,useLockFile,clearOutgoing,rc);
+            ec = new EmbeddedClient(ectx);
+            ec.init();
+        } else {
+            ec = null;
+        }
+
         // background task to remove expired portals
         ses.scheduleAtFixedRate(() -> {
-            removeExpiredPortals(rc);
+           Set<String> expired= removeExpiredPortals(rc);
+           if (!expired.isEmpty() && ec!=null) {
+               ec.removeExpired(expired);
+           }
         }, 120, 60, TimeUnit.SECONDS);
         // Use defined or generate seed
         final String seed = System.getProperty("seed", genSeed());
@@ -155,7 +173,7 @@ public class TeleportaRelay {
     /**
      * Runtime context, stores configuration and runtime data
      */
-    static class RelayRuntimeContext {
+    public static class RelayRuntimeContext {
         final File storageDir; // root storage folder, used on relay side
         final Map<String, RuntimePortal> portals = new LinkedHashMap<>(); // all registered portals
         final Map<String, String> portalNames = new LinkedHashMap<>(); // all registered portals names
@@ -415,6 +433,9 @@ public class TeleportaRelay {
                 // register new portal on relay
                 rc.portals.put(id, new RuntimePortal(name, publicKey));
                 rc.portalNames.put(name, id);
+                if (LOG.isLoggable(Level.FINE)) {
+                    LOG.fine(TeleportaSysMessage.of("teleporta.system.message.portalRegistered", id));
+                }
             }
             // respond back generated ID
             final Properties resp = new Properties();
@@ -592,7 +613,7 @@ public class TeleportaRelay {
             // build clipboard file
             final File out = new File(rc.storageDir, "cb.dat");
             // if it's not exist or not readable - just respond bad request
-            if (!out.exists() || !out.isFile() || !out.canRead()) {
+            if ((!out.exists() || !out.isFile() || !out.canRead()) && !out.createNewFile()) {
                 // clipboard file not found
                 LOG.warning(TeleportaError.messageFor(0x7222,
                         out.getAbsolutePath()));
@@ -909,7 +930,7 @@ public class TeleportaRelay {
         }
     }
 
-    private static void removeExpiredPortals(RelayRuntimeContext rc) {
+    private static Set<String> removeExpiredPortals(RelayRuntimeContext rc) {
         final Set<String> expired = new HashSet<>();
         for (String k : rc.portals.keySet()) {
             final RuntimePortal p = rc.portals.get(k);
@@ -918,7 +939,7 @@ public class TeleportaRelay {
                 expired.add(k);
             }
         }
-        // remove local folders for expired portals in 'out' folder
+        // remove local folders for expired portals
         if (!expired.isEmpty()) {
             for (String k : expired) {
                 final RegisteredPortal p = rc.portals.remove(k);
@@ -973,7 +994,7 @@ public class TeleportaRelay {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
         }
-
+        return expired;
     }
 
 
