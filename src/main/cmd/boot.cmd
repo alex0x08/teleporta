@@ -29,15 +29,66 @@ set UNPACKED_JRE=%UNPACKED_JRE_DIR%\jre\bin\java.exe
 IF exist %UNPACKED_JRE% >NUL (goto :RunJavaUnpacked)
 
 where java 2 >NUL
-if "%ERRORLEVEL%"=="0" (call :JavaFound) else (call :DownloadJava)
+if "%ERRORLEVEL%"=="0" (call :JavaFound1) else (call :CheckJavaHome)
 goto :EOF
-:JavaFound
+:CheckJavaHome
+if defined JAVA_HOME (
+    echo JAVA_HOME="%JAVA_HOME%"
+	set JRE=%JAVA_HOME%\bin\java.exe
+	goto :JavaFound2
+) else (
+    echo JAVA_HOME is not defined
+	goto :CheckJavaReg	
+)
+
+
+:CheckJavaReg
+setlocal enableextensions disabledelayedexpansion
+
+    :: possible locations under HKLM\SOFTWARE of JavaSoft registry data
+    set "javaNativeVersion="
+    set "java32ON64=Wow6432Node\"
+
+    :: for variables
+    ::    %%k = HKLM\SOFTWARE subkeys where to search for JavaSoft key
+    ::    %%j = full path of "Java Runtime Environment" key under %%k
+    ::    %%v = current java version
+    ::    %%e = path to java
+
+   set "javaDir="
+    set "javaVersion="
+    for %%k in ( "%javaNativeVersion%" "%java32ON64%") do if not defined javaDir (
+        for %%j in (
+            "HKLM\SOFTWARE\%%~kJavaSoft\Java Runtime Environment"
+        ) do for /f "tokens=3" %%v in (
+            'reg query "%%~j" /v "CurrentVersion" 2^>nul ^| find /i "CurrentVersion"'
+        ) do for /f "tokens=2,*" %%d in (
+            'reg query "%%~j\%%v" /v "JavaHome"   2^>nul ^| find /i "JavaHome"'
+        ) do ( set "javaDir=%%~e" & set "javaVersion=%%v" )
+    )
+
+    if not defined javaDir (
+        echo Java not found
+		goto :DownloadJava
+    ) else (
+        ::echo JAVA_HOME="%javaDir%"
+        ::echo JAVA_VERSION="%javaVersion%"
+		set "JRE=%javaDir%\bin\java.exe"
+		goto :JavaFound2
+	)
+
+    endlocal
+
+:JavaFound1
 set JRE=java
+
+:JavaFound2
 :: Java found in PATH, checking version..
 set JAVA_VERSION=0
-for /f "tokens=3" %%g in ('java -version 2^>^&1 ^| findstr /i "version"') do (
+for /f "tokens=3" %%g in ('^""%JRE%" -version 2^>^&1 ^| findstr /i "version"^"') do (
   set JAVA_VERSION=%%g
 )
+echo ver1: %JAVA_VERSION%
 set JAVA_VERSION=%JAVA_VERSION:"=%
 for /f "delims=.-_ tokens=1-2" %%v in ("%JAVA_VERSION%") do (
   if /I "%%v" EQU "1" (
@@ -46,7 +97,7 @@ for /f "delims=.-_ tokens=1-2" %%v in ("%JAVA_VERSION%") do (
     set JAVA_VERSION=%%v
   )
 )
-if %JAVA_VERSION% LSS 11 (goto :DownloadJava) else (goto :RunJava)
+if %JAVA_VERSION% LSS 8 (goto :DownloadJava) else (goto :RunJava)
 
 :DownloadJava
 echo JRE not found in PATH, trying to download..
@@ -69,8 +120,9 @@ set JRE=%UNPACKED_JRE_DIR%\jre\bin\java.exe
 :RunJava
 ::echo %JRE% 
 ::pause
-chcp 65001 >NUL
-%JRE% -Dfile.encoding=UTF-8 -jar %SELF_SCRIPT% %*
+::chcp 65001 >NUL
+::-Dfile.encoding=UTF-8
+"%JRE%" -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -Dconsole.encoding=UTF-8 -jar "%SELF_SCRIPT%" %*
 goto :EOF
 
 :ExitError
