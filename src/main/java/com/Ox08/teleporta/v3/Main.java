@@ -59,17 +59,6 @@ public class Main {
         // check for user specified locale
         setupLocale();
 
-        // if there are no required params provided - start default relay and exit
-        if (cleaned.isEmpty() && ! configLoaded) {
-            //printHelp();
-            startDefaultRelay();
-            return;
-        }
-
-        // load build info, its done so lately because contains localized error messages now,
-        // so must be called after locale is set
-        SystemInfo.SI.load();
-
         // check if debug messages enabled
         final boolean debugMessages = Boolean
                 .parseBoolean(System.getProperty("appDebug", "false"));
@@ -77,6 +66,14 @@ public class Main {
         if (debugMessages) {
             setDebugLogging();
         }
+
+        // if there are no required params provided - start default relay and exit
+        if (cleaned.isEmpty() && ! configLoaded) {
+            //printHelp();
+            startDefaultRelay();
+            return;
+        }
+
         // get relay URL
         String relayUrl = cleaned.isEmpty() ?
                 System.getProperty("relayUrl",null) : cleaned.get(0);
@@ -99,6 +96,11 @@ public class Main {
             printHelp();
             return;
         }
+
+        // load build info, its done so lately because contains localized error messages now,
+        // so must be called after locale is set
+        SystemInfo.SI.load();
+
         // do we need to show logo?
         final boolean showLogo = Boolean.parseBoolean(
                 System.getProperty("showLogo", "true"));
@@ -110,9 +112,10 @@ public class Main {
                 Boolean.parseBoolean(System.getProperty("clipboard", "false"));
         final boolean clearOutgoing =
                 Boolean.parseBoolean(System.getProperty("clearOutgoing", "false"));
-
+        final boolean relayHasPortal =
+                Boolean.parseBoolean(System.getProperty("relayHasPortal", "false"));
         if (relay) {
-            TeleportaRelay.init(enableClipboard,clearOutgoing);
+            TeleportaRelay.init(enableClipboard,clearOutgoing,relayHasPortal);
         } else {
             TeleportaClient.init(relayUrl, enableClipboard,clearOutgoing);
         }
@@ -121,7 +124,7 @@ public class Main {
     static void startDefaultRelay() throws Exception {
         // load build info
         SystemInfo.SI.load();
-        TeleportaRelay.init(false,false);
+        TeleportaRelay.init(false,false,true);
     }
     /**
      * We need to make programmatic locale toggle, because standard way -Duser.country -Duser.language=
