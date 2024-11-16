@@ -122,7 +122,7 @@ set JRE=%UNPACKED_JRE_DIR%\jre\bin\java.exe
 ::pause
 ::chcp 65001 >NUL
 ::-Dfile.encoding=UTF-8
-"%JRE%" -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -Dconsole.encoding=UTF-8 -jar "%SELF_SCRIPT%" %*
+"%JRE%" -jar %SELF_SCRIPT% %*
 goto :EOF
 
 :ExitError
