@@ -4,8 +4,10 @@ Teleporting files from Bob to Alice since 2015. Community edition.
 This is our internal tool, dedicated to fast and secure file exchange within a team.
 
 An article with detailed project description could be found here (in Russian): [https://blog.0x08.ru/teleporta](https://blog.0x08.ru/teleporta)
-
+In action:
 ![In short](https://github.com/alex0x08/teleporta/blob/main/images/316/teleporta-demo.gif?raw=true)
+Clipboard transfer:
+![Clipboard](https://github.com/alex0x08/teleporta/blob/main/images/316/teleporta-clipboard-demo.gif?raw=true)
 
 
 # How it work
