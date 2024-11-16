@@ -6,21 +6,19 @@ This is our internal tool, dedicated to fast and secure file exchange within a t
 An article with detailed project description could be found here (in Russian): [https://blog.0x08.ru/teleporta](https://blog.0x08.ru/teleporta)
 
 # How it work
-Technically, Teleporta has 2 different applications combined in one and enabled by command line arguments.
-
-There are two work modes:'relay' (server) and 'portal' (client).  
+There are two work modes: *relay* - server and *portal* - client.  
 
 ![Schema](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-schema.png?raw=true)
 
-In 'relay' mode, Teleporta starts to operate as a relay: the application will start an embedded HTTP server, which accepts incoming requests. 
-From version 3.1.6 the 'relay' mode is used by default.
+In *relay* mode, Teleporta starts to operate as a relay for files transfers: the application will start an HTTP-server, which accepts incoming requests. 
+From version 3.1.6 the *relay* mode is used by default.
 
-Then another Teleporta instance, but in 'portal' mode, registers on that relay and uploads files and downloads them on another side.
+Then another Teleporta instance, but in *portal* mode, registers on that relay and uploads files and downloads them on another side.
 
 ![Relay mode](https://github.com/alex0x08/teleporta/blob/main/images/316/teleporta-default.png?raw=true)
 
 
-In 'portal' mode, Teleporta connects to relay using provided URL, registers itself on that relay, and starts to monitor special local folders for changes. 
+In *portal* mode, Teleporta connects to relay using provided URL, registers itself on that relay, and starts to monitor special local folders for changes. 
 
 Each file or folder found in those folders will be automatically transferred to the remote machine via relay.
 
@@ -30,8 +28,9 @@ Each file or folder found in those folders will be automatically transferred to 
 
 # How to run
 
-Just download latest `teleporta.cmd` from releases and run it in console. For most cases that would be enough. 
-If you're on Windows and don't have any JDK or JRE installed - bootstrap script will try to download it automatically. For all other OSes, please verify that you have Java 1.8+ installed, which could be JRE or JDK.
+Just download latest `teleporta.cmd` from releases and run it in console, for most cases that would be enough. 
+
+If you're on Windows and don't have any JDK or JRE installed - Teleporta will try to download and use it automatically. For all other OSes, please verify that you have Java 1.8+ installed, which could be JRE or JDK.
 
 There is some "black magic" in Teleporta boostrap, that allows to run same application on all OSes, but sometimes it can break.
 But it's always possible to run Teleporta as ordinary Java application:
@@ -55,12 +54,20 @@ teleporta.cmd http://majestic12:8989/2d52fb71ef728d8813a001a6592c8248801d844ce2c
 ```
 
 From version 3.1.6, the default Teleporta relay also starts embedded portal, to let relay send&receive files to himself.
+To disable the *embedded portal* feature, pass this argument:
+```
+-DrelayHasPortal=false
+```
+Note, that its enabled by default only when running a default relay - without additional configuration options.
 
 It's possible to run both relay and portal on the same machine, which is useful for testing:
 
 ![Both Portal and relay on same machine](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-both.png?raw=true)
 
-Just keep in mind that local relay will already have a portal named as hostname, so to start client you'll need to provide altername portal name: -DportalName="My another portal"
+Just keep in mind that local relay will already have a portal named as hostname, so to start client you'll need to provide altername portal name: 
+```
+-DportalName="My another portal"
+```
 
 # In action
 
@@ -74,7 +81,7 @@ Each portal has its own pair of keys (public & private), used for file encryptio
 
 The public key is shared by the relay with all other connected portals and is used when one relay sends a file to another.
 
-Let's say portal 'Bob' wants to transfer a file through relay to portal 'Alice.' Bob takes Alice's public key from the relay and uses it to encrypt the file that needs to be transferred. When received, Alice decrypts the file using her own private key.
+Let's say portal *Bob* wants to transfer a file through relay to portal *Alice*. Bob takes Alice's public key from the relay and uses it to encrypt the file that needs to be transferred. When received, Alice decrypts the file using her own private key.
 
 The community version uses weak algorithms: 2048-bit RSA and 128-bit AES, fair enough for normal users, but easily breakable by any 'special forces,' so please don't try to use this tool for anything illegal.
 
@@ -91,7 +98,7 @@ Enable debug output:
 ```
 -DappDebug=true
 ```
-Enable 'programmatic' file watcher instead of native:
+Enable *programmatic* file watcher instead of native:
 ```
 -DdumbWatcher=true
 ```
@@ -158,7 +165,7 @@ When set, portal will not be able to send anything, all outgoing logic will be d
 
 # Private relays
 
-Since 3.1.1 we added a new 'private relay' mode, which allows to run relays privately: clients will not be able to connect without local key file. 
+Since 3.1.1 we added a new *private relay* mode, which allows to run relays privately: clients will not be able to connect without local key file. 
   
 Pass argument `-DprivateRelay=true` when start Teleporta relay, grab key from console, which look like this:
 ```
@@ -180,7 +187,7 @@ Save it to text file and provide it when start Teleporta in client mode:
 
 Since 3.1.2 we added important feature that simplifies deployment: 
 
-Teleporta Relay now allows to download the 'self package' - generated zip-archive with application and config file with defined relay url.
+Teleporta Relay now allows to download the *self package* - generated zip-archive with application and config file with defined relay url.
 
 Just open link in browser on client side, where you need to deploy Teleporta: 
 ```
@@ -203,7 +210,7 @@ To solve that, we added special mode called `useLockFile` (disabled by default),
 ```
 -DuseLockFile=true
 ```
-When enabled, all copy/move actions inside 'to' folder will trigger creation of special file called 'lock' . Till this file exists - there would be no uploading process.
+When enabled, all copy/move actions inside *to* folder will trigger creation of special file called *lock* . Till this file exists - there would be no uploading process.
 
 So you need to remove this file by hand, right after all required files/folders are copied. 
 Removing this file will trigger uploading, but till its not done - folder will not be monitored for changes.
@@ -221,7 +228,6 @@ From 3.1.6 we provide localized Teleporta for 2 languages: English and Russian. 
 But its possible to override passing `-Dlang=ru` or `-Dlang=en` arguments
 
 # How to build
-
 Teleporta has no dependencies and can be easily built by any JDK 1.8 or upper with Apache Maven:
 
 ```
