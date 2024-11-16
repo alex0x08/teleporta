@@ -13,29 +13,30 @@ There are two work modes:'relay' (server) and 'portal' (client).
 ![Schema](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-schema.png?raw=true)
 
 In'relay' mode, Teleporta starts to operate as a relay: the application will start an embedded HTTP server, which accepts incoming requests. 
+From version 3.1.6 'relay' mode used by default.
 
 Then another Teleporta instance, but in 'portal' mode, registers on that relay and uploads files and downloads them on another side.
 
-![Relay mode](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-relay-mode.png?raw=true)
+![Relay mode](https://github.com/alex0x08/teleporta/blob/main/images/316/teleporta-default.png?raw=true)
 
 
-In 'portal' mode, Teleporta connects to the relay using the provided URL, registers itself on that relay, and starts to monitor special local folders for changes. 
+In 'portal' mode, Teleporta connects to relay using provided URL, registers itself on that relay, and starts to monitor special local folders for changes. 
 
 Each file or folder found in those folders will be automatically transferred to the remote machine via relay.
 
 
-![Portal mode](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-portal.png?raw=true)
+![Portal mode](https://github.com/alex0x08/teleporta/blob/main/images/316/teleporta-connected-to-relay.png?raw=true)
 
 
 # How to run
 
-Just download  latest `teleporta.cmd` from releases and run in console. 
-If you're on Windows and don't have any JDK or JRE installed - the startup script will try to download it automatically. For all other OSes, please verify that you have Java 1.8+ installed, which could be JRE or JDK.
+Just download latest `teleporta.cmd` from releases and run it in console. For most cases that would be enough. 
+If you're on Windows and don't have any JDK or JRE installed - bootstrap script will try to download it automatically. For all other OSes, please verify that you have Java 1.8+ installed, which could be JRE or JDK.
 
 
-To start in relay mode:
+To start in relay mode just run it:
 ```
-teleporta.cmd -relay
+teleporta.cmd
 ```
 After the start, there would be a long URL displayed, like
 
@@ -47,10 +48,13 @@ You need to copy it and paste it as the first argument to start Teleporta in 'po
 teleporta.cmd http://majestic12:8989/2d52fb71ef728d8813a001a6592c8248801d844ce2c0d0a6976f10b73d3bdb463ea4cd09c1ad9a25d5b83a543238
 ```
 
+From version 3.1.6, the default Teleporta relay also starts embedded portal, to let relay send&receive files to himself.
+
 It's possible to run both relay and portal on the same machine, which is useful for testing:
 
 ![Both Portal and relay on same machine](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-both.png?raw=true)
 
+Just keep in mind that local relay will already have a portal named as hostname, so to start client you'll need to provide altername portal name: -DportalName="My another portal"
 
 # In action
 
@@ -205,6 +209,10 @@ There were also Teleporta versions in C++ and Golang, which did not survive: C++
 
 To be more specific, we faced the fact that using C++ 11 as the most widely used modern C++ version requires us to use and support weird hacks like [this](https://github.com/gulrak/filesystem) if we going to provide long support.
 More recent C++ versions, especially 20, are not well supported in common compilers, and it's better to use older compilers if you need stability in a wide range of environments. Same story for Golang: it sucks on legacy; even 10-year-old Linux/Windows hosts are a big problem.
+
+# Localization
+From 3.1.6 we provide localized Teleporta for 2 languages: English and Russian. By default the system locale will be used, provided by `Locale.getDefault()`
+But its possible to override passing `-Dlang=ru` or `-Dlang=en` arguments
 
 # How to build
 
