@@ -53,6 +53,7 @@ public class TeleportaClient extends AbstractClient{
     final TeleFilesWatch watch;
 
     public TeleportaClient(ClientRuntimeContext ctx) throws NoSuchAlgorithmException {
+        this.ctx = ctx;
         this.tc = new TeleCrypt();
         // if clipboard monitoring is enabled - start it
         if (ctx.allowClipboard) {
@@ -70,7 +71,6 @@ public class TeleportaClient extends AbstractClient{
         } else {
             this.watch = null;
         }
-        this.ctx = ctx;
         this.ctx.keyPair = tc.generateKeys();
     }
 
@@ -544,7 +544,7 @@ public class TeleportaClient extends AbstractClient{
                 return;
             }
             tc.decryptData(rkey, bin, bout);
-            clip.setClipboard(bout.toString());
+            clip.setClipboard(bout.toString("utf-8"));
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardUpdated", bout.size()));
             }

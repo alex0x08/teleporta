@@ -41,6 +41,7 @@ public class EmbeddedClient extends AbstractClient {
     final EmbeddedClientRuntimeContext ctx;
 
     public EmbeddedClient(EmbeddedClientRuntimeContext ctx) {
+        this.ctx = ctx;
         // if clipboard monitoring is enabled - start it
         if (ctx.allowClipboard) {
             clip = new TeleClipboard(data -> {
@@ -57,8 +58,6 @@ public class EmbeddedClient extends AbstractClient {
         } else {
             this.watch = null;
         }
-        this.ctx = ctx;
-
     }
     public void init()  {
         // create teleporta client's home folder
@@ -266,6 +265,16 @@ public class EmbeddedClient extends AbstractClient {
             out.flush();
             tc.encryptData(key, in, out);
             out.flush();
+
+            // notify all other about clipboard update
+            for (String k : ctx.relayCtx.portals.keySet()) {
+                if (k.equals(ctx.sessionId)) {
+                    continue;
+                }
+                final TeleportaRelay.RuntimePortal p = ctx.relayCtx.portals.get(k);
+                p.needLoadClipboard = true;
+            }
+
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             // Error encrypting clipboard data
             throw TeleportaError.withError(0x7214, e);
@@ -441,9 +450,10 @@ public class EmbeddedClient extends AbstractClient {
             LOG.fine(TeleportaSysMessage.of("teleporta.system.message.downloadingClipboard"));
         }
         final TeleportaRelay.RuntimePortal p = ctx.relayCtx.portals.get(ctx.sessionId);
+        p.needLoadClipboard = false;
+
         final File rFile = new File(ctx.relayCtx.storageDir, "cb.dat");
         if (!rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
-            p.needLoadClipboard = false;
             LOG.warning(TeleportaError.messageFor(0x7222,
                     rFile.getAbsolutePath()));
             return;

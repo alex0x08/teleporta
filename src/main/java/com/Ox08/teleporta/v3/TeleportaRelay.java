@@ -924,8 +924,7 @@ public class TeleportaRelay {
     static class RuntimePortal extends RegisteredPortal {
         boolean needReloadPortals, // if true - this portal must reload portals list from relay
                 needLoadClipboard;  // if true - this portal must load clipboard file
-        long lastSeen;
-
+        long lastSeen; // last seen this portal online
         RuntimePortal(String name, String publicKey) {
             super(name, publicKey);
         }

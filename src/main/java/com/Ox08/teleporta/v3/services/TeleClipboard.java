@@ -23,6 +23,9 @@ public class TeleClipboard {
         listener = new TeleFlavorListener();
         handler = h;
         this.cb = Toolkit.getDefaultToolkit().getSystemClipboard();
+        if (LOG.isLoggable(Level.FINE)) {
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardEnabled"));
+        }
     }
     /**
      * Must be synchronized, due to clipboard nature
@@ -44,6 +47,9 @@ public class TeleClipboard {
     }
     public synchronized void start() {
         cb.addFlavorListener(listener);
+        if (LOG.isLoggable(Level.FINE)) {
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardStarted"));
+        }
     }
     public synchronized void stop() {
         cb.removeFlavorListener(listener);
