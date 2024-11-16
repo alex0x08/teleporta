@@ -12,8 +12,8 @@ There are two work modes:'relay' (server) and 'portal' (client).
 
 ![Schema](https://github.com/alex0x08/teleporta/blob/main/images/teleporta-schema.png?raw=true)
 
-In'relay' mode, Teleporta starts to operate as a relay: the application will start an embedded HTTP server, which accepts incoming requests. 
-From version 3.1.6 'relay' mode used by default.
+In 'relay' mode, Teleporta starts to operate as a relay: the application will start an embedded HTTP server, which accepts incoming requests. 
+From version 3.1.6 the 'relay' mode is used by default.
 
 Then another Teleporta instance, but in 'portal' mode, registers on that relay and uploads files and downloads them on another side.
 
@@ -33,6 +33,12 @@ Each file or folder found in those folders will be automatically transferred to 
 Just download latest `teleporta.cmd` from releases and run it in console. For most cases that would be enough. 
 If you're on Windows and don't have any JDK or JRE installed - bootstrap script will try to download it automatically. For all other OSes, please verify that you have Java 1.8+ installed, which could be JRE or JDK.
 
+There is some "black magic" in Teleporta boostrap, that allows to run same application on all OSes, but sometimes it can break.
+But it's always possible to run Teleporta as ordinary Java application:
+```
+java -jar teleporta.cmd
+```
+Use it, if nothing else helps.
 
 To start in relay mode just run it:
 ```
