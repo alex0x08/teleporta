@@ -472,9 +472,6 @@ public class EmbeddedClient extends AbstractClient {
         }
     }
     public boolean register() {
-        if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine("registering on relay");
-        }
         String id = generateUniqueID() + "";
         // try name from environment
         String portalName = TeleportaClient.buildPortalName();

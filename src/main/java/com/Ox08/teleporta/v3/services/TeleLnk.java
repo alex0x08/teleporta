@@ -52,6 +52,7 @@ public class TeleLnk {
         }
     }
 
+    // for testing
     public static void main(String[] args) throws IOException {
         Path targetFolder = Paths.get("c:/users/alex/Desktop").toAbsolutePath();
 

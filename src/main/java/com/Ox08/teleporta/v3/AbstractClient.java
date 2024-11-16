@@ -19,6 +19,8 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+
+import static com.Ox08.teleporta.v3.TeleportaCommons.isWindows;
 /**
  * Abstract parent client, that shares common functions between real Teleporta client and embedded, used on relay side
  *
@@ -46,7 +48,7 @@ public abstract class AbstractClient {
                 // for Windows, we need to create .lnk file manually,
                 // because createSymbolicLink is not allowed
                 // without Administrator permissions
-                if (System.getProperty("os.name", "").toLowerCase().startsWith("windows")) {
+                if (isWindows()) {
                     TeleLnk.createLnkFor(teleportaHome.toPath(),
                             new File(lnk.getParent(), lnk.getName() + ".lnk"));
                 } else {

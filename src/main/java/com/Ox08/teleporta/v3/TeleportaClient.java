@@ -672,9 +672,6 @@ public class TeleportaClient extends AbstractClient{
      * @throws IOException on network errors
      */
     public boolean register() throws IOException {
-        if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine("registering on relay");
-        }
         final String part = decodeUrl(ctx.relayUrl, "register");
         // note:  existing path will be overwritten
         final URL u = new URL(ctx.relayUrl, ctx.relayUrl.getPath() + "/" + part);

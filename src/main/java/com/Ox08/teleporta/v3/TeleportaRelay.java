@@ -94,7 +94,6 @@ public class TeleportaRelay {
         // build runtime context
         final RelayRuntimeContext rc = new RelayRuntimeContext(teleportaHome,
                 rkp, privateRelay,allowClipboard);
-
         final EmbeddedClient ec;
         if (relayHasPortal) {
             final boolean allowOutgoing =
@@ -109,7 +108,6 @@ public class TeleportaRelay {
         } else {
             ec = null;
         }
-
         // background task to remove expired portals
         ses.scheduleAtFixedRate(() -> {
            Set<String> expired= removeExpiredPortals(rc);
@@ -422,7 +420,7 @@ public class TeleportaRelay {
                 } else {
                     // duplicate portal name
                     LOG.log(Level.WARNING, TeleportaError.messageFor(0x6113));
-                    respondAndClose(400, httpExchange);
+                    respondAndClose(403, httpExchange);
                     return;
                 }
             } else {
@@ -736,7 +734,6 @@ public class TeleportaRelay {
             }
         }
     }
-
     /**
      * Handle files downloads
      */
@@ -796,7 +793,6 @@ public class TeleportaRelay {
      */
     abstract static class AbstractHandler implements HttpHandler {
         protected final TeleCrypt tc = new TeleCrypt();
-
         /**
          * Extract query params from URL
          *
@@ -830,7 +826,6 @@ public class TeleportaRelay {
             }
             return qp;
         }
-
         /**
          * Checks that current request is not POST
          * We allow only POST for some endpoints.
@@ -845,7 +840,6 @@ public class TeleportaRelay {
             respondAndClose(400, exchange);
             return true;
         }
-
         /**
          * Respond unencrypted properties to http stream
          *

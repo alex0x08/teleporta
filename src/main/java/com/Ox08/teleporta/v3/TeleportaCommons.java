@@ -5,7 +5,11 @@ import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import java.io.File;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
@@ -211,10 +215,26 @@ public class TeleportaCommons {
                 consoleHandler = new ConsoleHandler();
                 topLogger.addHandler(consoleHandler);
             }
-            consoleHandler.setLevel(Level.ALL);
-            LOG.setLevel(Level.ALL);
-
+        // note: we need to change console encoding for Windows & Russian locale,
+        //       because it uses different codepages for UI and console
+        //       and Charset.defaultCharset() responds cp1251 where console
+        //       actually uses cp866
+        try  {
+            // contains because it can be cp1251 and windows-1251
+            if (isWindows() && Charset.defaultCharset().name().contains("1251")) {
+                consoleHandler.setEncoding("cp866");
+            }
+        } catch (UnsupportedEncodingException e) {
+            throw TeleportaError.withError(0x600,e);
+        }
+        consoleHandler.setLevel(Level.ALL);
+        LOG.setLevel(Level.ALL);
     }
+
+    public static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().startsWith("windows");
+    }
+
     /**
      * Custom HashMap implementation,that allows lookup by key and by value
      * @param <K>
