@@ -107,6 +107,23 @@
                             <script>
                                 <![CDATA[
                         import java.io.*;
+                        import java.nio.file.Files;
+
+                        // write script header
+                        void writeHeader(boolean mode,File src,OutputStream out) {
+
+                            String content = new String(Files.readAllBytes(src.toPath()), "UTF-8");
+
+                            if (mode) {
+                                // unix line endings
+                                content = content.replaceAll("\r\n", "\n");
+                                content = content.replaceAll("\r", "\n");
+                            } else {
+                                 content = content.replace("\n", "\r\n");
+                            }
+                            out.write(content.getBytes("UTF-8"));
+                        }
+
 
                         // function should be defined before actual call
                         // this just appends source binary to target
@@ -153,22 +170,14 @@
                         File fboot1 = new File(projectDir+"/src/main/cmd/boot.sh");
                         File fboot2 = new File(projectDir+"/src/main/cmd/boot.cmd");
 
-                        File payload = srcJar;
                         // open write stream to target combined binary
                         FileOutputStream fout = new FileOutputStream(target);
                         // write bootloader
-                        copy(fboot1,fout);
-                        copy(fboot2,fout);
-
-                        byte[] b = "0X080X080X080X08".getBytes();
-
-                        fout.write(b, 0, b.length);
-
-                        copy(payload,fout);
-
-                        fout.write(b, 0, b.length);
+                        writeHeader(true,fboot1,fout);
+                        writeHeader(false,fboot2,fout);
 
                         copy(srcJar,fout);
+
                         fout.close();
                         target.setExecutable(true,true);
 
