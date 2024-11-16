@@ -101,7 +101,8 @@ public class TeleportaRelay {
                     Boolean.parseBoolean(System.getProperty("allowOutgoing", "true")),
                     // check for 'lock' mode
                     useLockFile = Boolean.parseBoolean(System.getProperty("useLockFile", "false"));
-            EmbeddedClient.EmbeddedClientRuntimeContext ectx = new EmbeddedClient.EmbeddedClientRuntimeContext(
+            EmbeddedClient.EmbeddedClientRuntimeContext ectx
+                    = new EmbeddedClient.EmbeddedClientRuntimeContext(
                     allowClipboard,allowOutgoing,useLockFile,clearOutgoing,rc);
             ec = new EmbeddedClient(ectx);
             ec.init();

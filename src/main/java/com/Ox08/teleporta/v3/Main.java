@@ -42,16 +42,20 @@ public class Main {
         // if no arguments provided and no config found - just start default relay
         if (args.length == 0 && !configLoaded) {
             //printHelp();
-            startDefaultRelay();
+            startDefaultRelay(false);
             return;
         }
         // cleaned arguments, without key-value parameters
         final List<String> cleaned = new ArrayList<>();
+        boolean hasPropertiesSet=false;
         for (String a : args) {
             // dirty hack to accept env params *after* -jar argument passed
             if (a.startsWith("-D") && a.length() > 2 && a.contains("=")) {
                 final String[] p = a.substring(2).split("=");
                 System.setProperty(p[0], p[1]);
+                if (!hasPropertiesSet) {
+                    hasPropertiesSet = true;
+                }
                 continue;
             }
             cleaned.add(a);
@@ -69,8 +73,8 @@ public class Main {
 
         // if there are no required params provided - start default relay and exit
         if (cleaned.isEmpty() && ! configLoaded) {
-            //printHelp();
-            startDefaultRelay();
+
+            startDefaultRelay(hasPropertiesSet);
             return;
         }
 
@@ -79,7 +83,7 @@ public class Main {
                 System.getProperty("relayUrl",null) : cleaned.get(0);
         if (relayUrl == null || relayUrl.isEmpty()) {
            // now we start default relay instead of printing help
-            startDefaultRelay();
+            startDefaultRelay(hasPropertiesSet);
             return;
         }
         relayUrl = relayUrl.toLowerCase();
@@ -89,13 +93,7 @@ public class Main {
             relay = true;
         // if there is an argument that starts with http or https - use it as relay url
         // and start Teleporta in 'portal' mode
-        } else if (relayUrl.startsWith("http") || relayUrl.startsWith("https")) {
-            relay = false;
-         // otherwise just prints help and exit
-        } else {
-            printHelp();
-            return;
-        }
+        } else relay = !relayUrl.startsWith("http") && !relayUrl.startsWith("https");
 
         // load build info, its done so lately because contains localized error messages now,
         // so must be called after locale is set
@@ -121,10 +119,32 @@ public class Main {
         }
     }
 
-    static void startDefaultRelay() throws Exception {
+    /**
+     * Simplified logic, that starts default public relay
+     * @throws Exception
+     */
+    static void startDefaultRelay(boolean hasPropertiesSet) throws Exception {
         // load build info
         SystemInfo.SI.load();
-        TeleportaRelay.init(false,false,true);
+
+        if (hasPropertiesSet) {
+            final boolean showLogo = Boolean.parseBoolean(
+                    System.getProperty("showLogo", "true"));
+            if (showLogo) {
+                printLogo(true);
+            }
+            // clipboard needs to be enabled both on relay and portal sides
+            final boolean enableClipboard =
+                    Boolean.parseBoolean(System.getProperty("clipboard", "false"));
+            final boolean clearOutgoing =
+                    Boolean.parseBoolean(System.getProperty("clearOutgoing", "false"));
+            final boolean relayHasPortal =
+                    Boolean.parseBoolean(System.getProperty("relayHasPortal", "false"));
+            TeleportaRelay.init(enableClipboard,clearOutgoing,relayHasPortal);
+        } else {
+            TeleportaRelay.init(false,false,true);
+        }
+
     }
     /**
      * We need to make programmatic locale toggle, because standard way -Duser.country -Duser.language=
