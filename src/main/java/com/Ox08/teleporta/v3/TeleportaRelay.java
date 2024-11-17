@@ -50,7 +50,7 @@ public class TeleportaRelay {
      * @throws Exception
      */
     public static void main(String[] args) throws Exception {
-        setDebugLogging();
+        setLogging(true);
         System.setProperty("javax.net.debug", "all");
         System.setProperty("seed", "testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa");
         // System.setProperty("privateRelay","true");
@@ -60,22 +60,33 @@ public class TeleportaRelay {
     /**
      * Initializes Teleporta in relay mode
      *
+     * @param allowClipboard
+     *          if true - allow clipboard transfer
+     * @param clearOutgoing
+     *          if true - will remove pending files on start
+     * @param relayHasPortal
+     *          if true - start embedded portal on relay side
      * @throws Exception on I/O errors
+     * 
      */
-    public static void init(boolean allowClipboard,boolean clearOutgoing,boolean relayHasPortal) throws Exception {
+    public static void init(boolean allowClipboard,
+            boolean clearOutgoing,
+            boolean relayHasPortal) throws Exception {
         final int port = Integer.parseInt(System.getProperty("appPort", "8989"));
+        // get relay home folder
         final File teleportaHome = checkCreateHomeFolder("teleporta-relay");
         if (clearOutgoing) {
             deleteRecursive(teleportaHome, false);
         }
-        // We need to detect own jar location and pass full path as global variable to 'RespondSelfHandler'
-        final CodeSource codeSource = TeleportaRelay.class.getProtectionDomain().getCodeSource();
+        // We need to detect own jar location and pass full path 
+        // as global variable to 'RespondSelfHandler'
+        final CodeSource codeSource = TeleportaRelay.class
+                .getProtectionDomain().getCodeSource();
         final File jarFile;
         try {
             jarFile = new File(codeSource.getLocation().toURI());
         } catch (URISyntaxException ex) {
-            TeleportaError.printErr(0x7216, ex.getMessage());
-            ex.printStackTrace(System.err);
+            TeleportaError.printErr(0x7216, ex);
             System.exit(1);
             return;
         }
@@ -91,16 +102,19 @@ public class TeleportaRelay {
             TeleportaSysMessage.println("teleporta.system.message.relayKey");
             printRelayKey(rkp.getPublic().getEncoded());
         }
-        // build runtime context
+        // build runtime context for relay itself
         final RelayRuntimeContext rc = new RelayRuntimeContext(teleportaHome,
                 rkp, privateRelay,allowClipboard);
         final EmbeddedClient ec;
+        // check if 'embedded' portal is enabled 
         if (relayHasPortal) {
             final boolean allowOutgoing =
                     Boolean.parseBoolean(System.getProperty("allowOutgoing", "true")),
                     // check for 'lock' mode
                     useLockFile = Boolean.parseBoolean(System.getProperty("useLockFile", "false"));
-            EmbeddedClient.EmbeddedClientRuntimeContext ectx
+            // build another context, but for embedded relay
+            // this context will be linked with relay context 
+            final EmbeddedClient.EmbeddedClientRuntimeContext ectx
                     = new EmbeddedClient.EmbeddedClientRuntimeContext(
                     allowClipboard,allowOutgoing,useLockFile,clearOutgoing,rc);
             ec = new EmbeddedClient(ectx);
@@ -110,7 +124,7 @@ public class TeleportaRelay {
         }
         // background task to remove expired portals
         ses.scheduleAtFixedRate(() -> {
-           Set<String> expired= removeExpiredPortals(rc);
+           final Set<String> expired= removeExpiredPortals(rc);
            if (!expired.isEmpty() && ec!=null) {
                ec.removeExpired(expired);
            }
@@ -129,8 +143,9 @@ public class TeleportaRelay {
                 .setHandler(new FilePendingDownloadsHandler(rc));
         server.createContext(generateUrl(seed, "file-download"))
                 .setHandler(new FileDownloadHandler(rc));
+        // check if we allow clipboard exchange on relay
         if (rc.allowClipboardTransfer) {
-            LOG.info("Clipboard transfer is allowed.");
+            TeleportaSysMessage.println("teleporta.system.message.clipboardEnabled");
             server.createContext(generateUrl(seed, "cb-download"))
                 .setHandler(new ClipboardDownloadHandler(rc));
             server.createContext(generateUrl(seed, "cb-upload"))
@@ -140,14 +155,17 @@ public class TeleportaRelay {
                 .setHandler(new RegisterHandler(rc));
         server.createContext(generateUrl(seed, "get-portals"))
                 .setHandler(new GetPortalsHandler(rc));
+        // check for 'self download' feature
         final boolean selfDownload = Boolean
                 .parseBoolean(System.getProperty("selfDownload", "true"));
+        // if enabled - attach self download handler
         if (selfDownload) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.selfDownloadsAllowed"));
+            LOG.fine(TeleportaSysMessage
+                    .of("teleporta.system.message.selfDownloadsAllowed"));
             server.createContext("/" + seed)
                     .setHandler(new RespondSelfHandler());
         }
-        String sb = TeleportaSysMessage.of(rc.privateRelay ?
+        final String sb = TeleportaSysMessage.of(rc.privateRelay ?
                 "teleporta.system.message.teleportaRelayPrivate" :
                 "teleporta.system.message.teleportaRelayPublic") +
                 " " +
@@ -164,7 +182,8 @@ public class TeleportaRelay {
     static String generateUrl(String seed, String part) {
         final String url = buildServerUrl(seed, part);
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.urlDerivedPart", url, part));
+            LOG.fine(TeleportaSysMessage
+                    .of("teleporta.system.message.urlDerivedPart", url, part));
         }
         return String.format("/%s/%s", seed, url);
     }
@@ -323,12 +342,14 @@ public class TeleportaRelay {
      */
     static class RegisterHandler extends AbstractHandler {
         private final RelayRuntimeContext rc;
-        private final boolean allowPortalNamesUpdate; // if set - we allow to replace registered portals
+        // if true - we allow to replace registered portals
+        private final boolean allowPortalNamesUpdate; 
         private final String motd;
         RegisterHandler(RelayRuntimeContext rc) {
             this.rc = rc;
             allowPortalNamesUpdate = Boolean.parseBoolean(
                     System.getProperty("allowPortalNameUpdate", "false"));
+            // build relay's MOTD (welcome message)
             String m =System.getProperty("motd",null);
             if (m == null || m.isEmpty()) {
                 m = TeleportaSysMessage.of("teleporta.system.message.defaultMotd",
@@ -364,10 +385,13 @@ public class TeleportaRelay {
             /*
              * In 'private' mode, client must send special encrypted message,
              *  created with his copy of relay's public key.
-             *  This works as proof that client has correct key and his requests could be processed
+             *  This works as proof that client has correct key 
+             *  and his requests could be processed.
              */
             if (rc.privateRelay) {
+                // get hello message
                 final String helloMsg = data.getProperty("hello", null);
+                // if there is no 'hello' message or its empty - just respond 403 and stop
                 if (helloMsg == null || helloMsg.isEmpty()) {
                     // hello message required
                     LOG.warning(TeleportaError.messageFor(0x7220));
@@ -433,7 +457,8 @@ public class TeleportaRelay {
                 rc.portals.put(id, new RuntimePortal(name, publicKey));
                 rc.portalNames.put(name, id);
                 if (LOG.isLoggable(Level.FINE)) {
-                    LOG.fine(TeleportaSysMessage.of("teleporta.system.message.portalRegistered", id));
+                    LOG.fine(TeleportaSysMessage
+                            .of("teleporta.system.message.portalRegistered", id));
                 }
             }
             // respond back generated ID
@@ -693,7 +718,6 @@ public class TeleportaRelay {
                 respondAndClose(400, httpExchange);
                 return;
             }
-            final TeleCrypt tc = new TeleCrypt();
             httpExchange.sendResponseHeaders(200, 0);
             try (OutputStream out = httpExchange.getResponseBody();
                  FileInputStream fin = new FileInputStream(rFile)) {
@@ -729,7 +753,7 @@ public class TeleportaRelay {
             } finally {
                 // file removal is fast, no need to detach in dedicated thread
                 if (!rFile.delete()) {
-                    LOG.warning(TeleportaSysMessage.of("0x6106", rFile.getAbsolutePath()));
+                    LOG.warning(TeleportaError.messageFor(0x6106, rFile.getAbsolutePath()));
                 }
             }
         }
@@ -781,8 +805,8 @@ public class TeleportaRelay {
             } finally {
                 // file removal is fast, no need to detach in dedicated thread
                 if (!rFile.delete()) {
-                    LOG.warning(String.format(TeleportaError.messageFor(0x6106,
-                            rFile.getAbsolutePath())));
+                    LOG.warning(TeleportaError.messageFor(0x6106,
+                            rFile.getAbsolutePath()));
                 }
             }
         }
@@ -819,7 +843,7 @@ public class TeleportaRelay {
                             URLDecoder.decode(pair.substring(idx + 1),
                                     String.valueOf(StandardCharsets.UTF_8)) : null;
                     qp.put(key, value);
-                } catch (Exception e) {
+                } catch (UnsupportedEncodingException e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
                     return Collections.emptyMap();
                 }

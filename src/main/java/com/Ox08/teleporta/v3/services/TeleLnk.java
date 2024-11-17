@@ -55,7 +55,6 @@ public class TeleLnk {
     // for testing
     public static void main(String[] args) throws IOException {
         Path targetFolder = Paths.get("c:/users/alex/Desktop").toAbsolutePath();
-
         createLnkFor(targetFolder, new File("testlink.lnk"));
     }
     static class GUID implements SerializableLinkObject {
@@ -81,6 +80,7 @@ public class TeleLnk {
                 b[i] = (byte) Long.parseLong(s.substring(j, j + 2), 16);
             return b;
         }
+        @Override
         public void serialize(LinkDataWriter bw) throws IOException {
             bw.write4bytes(d1);
             bw.write2bytes(d2);
@@ -196,6 +196,7 @@ public class TeleLnk {
 
     }
     static class VolumeID implements SerializableLinkObject {
+        @Override
         public void serialize(LinkDataWriter bw) throws IOException {
             int size = 16;
             String label = "";
@@ -281,12 +282,13 @@ public class TeleLnk {
         public BitSet32(int n) {
             d = n;
         }
-        protected void set(int i) {
+        protected final void set(int i) {
             d = (d & ~(1 << i)) | (1 << i);
         }
-        protected void clear(int i) {
+        protected final void clear(int i) {
             d = d & ~(1 << i);
         }
+        @Override
         public void serialize(LinkDataWriter bw) throws IOException {
             bw.write4bytes(d);
         }
@@ -412,6 +414,7 @@ public class TeleLnk {
     static class ShellLinkHeader implements SerializableLinkObject {
         private final LinkFlags lf = new LinkFlags(0);
         private final FileAttributesFlags faf = new FileAttributesFlags(0);
+        @Override
         public void serialize(LinkDataWriter bw) throws IOException {
             bw.write4bytes(0x0000004C); //header size
             final GUID clsid = new GUID("00021401-0000-0000-C000-000000000046");
@@ -438,6 +441,7 @@ public class TeleLnk {
         private final LinkInfoFlags lif = new LinkInfoFlags(0);
         private final VolumeID vid = new VolumeID();
         private String localBasePath = "";
+        @Override
         public void serialize(LinkDataWriter bw) throws IOException {
             int pos = bw.getPosition();
             int hsize = 28;
@@ -503,6 +507,7 @@ public class TeleLnk {
         }
     }
     static class LinkTargetIDList extends LinkedList<ItemID> implements SerializableLinkObject {
+        @Override
         public void serialize(LinkDataWriter bw) throws IOException {
             int size = 2;
             byte[][] b = new byte[size()][];

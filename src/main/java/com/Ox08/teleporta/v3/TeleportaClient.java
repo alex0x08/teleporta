@@ -4,11 +4,9 @@ import com.Ox08.teleporta.v3.messages.TeleportaError;
 import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
 import com.Ox08.teleporta.v3.services.TeleClipboard;
 import com.Ox08.teleporta.v3.services.TeleFilesWatch;
-import com.Ox08.teleporta.v3.services.TeleLnk;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
-import java.awt.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -26,8 +24,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -45,7 +41,6 @@ public class TeleportaClient extends AbstractClient{
 
     // shared executor, used for parallel files download
     private static final ScheduledExecutorService ses = Executors.newScheduledThreadPool(11);
-    private final TeleCrypt tc;
     private TeleClipboard clip;
     private final ClientRuntimeContext ctx;
     private boolean pollRunning,  // if poll enabled and running
@@ -60,7 +55,7 @@ public class TeleportaClient extends AbstractClient{
             clip = new TeleClipboard(data -> {
                 try {
                     sendClipboard(data);
-                } catch (Exception e) {
+                } catch (IOException e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
                 }
             });
@@ -75,7 +70,7 @@ public class TeleportaClient extends AbstractClient{
     }
 
     public static void main(String[] args) throws Exception {
-        setDebugLogging();
+        setLogging(true);
         //  System.setProperty("relayKey","/opt/work/tmp/tele.pub");
         System.setProperty("useLockFile", "true");
         System.setProperty("dumbWatcher", "true");
@@ -139,7 +134,8 @@ public class TeleportaClient extends AbstractClient{
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.portalRegistered", ctx.sessionId));
+            LOG.fine(TeleportaSysMessage
+                    .of("teleporta.system.message.portalRegistered", ctx.sessionId));
         }
         // load portals list, don't touch watches initially, because output folder should be empty
         c.reloadPortals(false);
@@ -180,7 +176,7 @@ public class TeleportaClient extends AbstractClient{
                         ses.submit(() -> {
                             try {
                                 c.sendFile(f, id);
-                            } catch (Exception e) {
+                            } catch (IOException e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }
                         });
@@ -209,20 +205,21 @@ public class TeleportaClient extends AbstractClient{
                 }
                 if (files != null) {
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.foundPendingFiles", files.length));
+                        LOG.fine(TeleportaSysMessage
+                                .of("teleporta.system.message.foundPendingFiles", files.length));
                     }
                     // there could be only few files always, no need for dir streaming
                     for (String file : files) {
                         ses.submit(() -> {
                             try {
                                 c.downloadFile(file);
-                            } catch (Exception e) {
+                            } catch (IOException e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }
                         });
                     }
                 }
-            } catch (Exception e) {
+            } catch (IOException e) {
                 // don't log all the time
                 if (c.networkError) {
                     return;
@@ -340,7 +337,8 @@ public class TeleportaClient extends AbstractClient{
                     watch.unregister(f.toPath());
                     deleteRecursive(f, true);
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.removedExpiredPortal", n));
+                        LOG.fine(TeleportaSysMessage
+                                .of("teleporta.system.message.removedExpiredPortal", n));
                     }
                 }
             }
@@ -395,7 +393,8 @@ public class TeleportaClient extends AbstractClient{
      */
     public void sendClipboard(String data) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendingClipboard", data.length()));
+            LOG.fine(TeleportaSysMessage
+                    .of("teleporta.system.message.sendingClipboard", data.length()));
         }
         final String part = decodeUrl(ctx.relayUrl, "cb-upload");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?from=%s",
@@ -472,7 +471,7 @@ public class TeleportaClient extends AbstractClient{
             final PublicKey pk = tc.restorePublicKey(foreignPk);
             final byte[] enc = tc.encryptKey(key.getEncoded(), pk);
             props.setProperty("fileKey", toHex(enc, 0, 0));
-        } catch (Exception e) {
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             // Error creating session key
             throw TeleportaError.withError(0x7213,e);
         }
@@ -630,7 +629,7 @@ public class TeleportaClient extends AbstractClient{
                         // if its folder
                         case "folder": {
                             // note on extension
-                            final File outz = new File(f, name + ".tmpzip");
+                            final File outz = new File(f, name +  TeleportaCommons.FOLDERZIP_EXT);
                             // decrypt data
                             try (FileOutputStream fout = new FileOutputStream(outz)) {
                                 tc.decryptData(rkey, zin, fout);
@@ -669,6 +668,7 @@ public class TeleportaClient extends AbstractClient{
     /**
      * Regsters portal on remote portal
      *
+     * @return true if registered, false - otherwise
      * @throws IOException on network errors
      */
     public boolean register() throws IOException {
@@ -729,7 +729,7 @@ public class TeleportaClient extends AbstractClient{
                 // if succeeded - you have correct relay key
                 props.setProperty("hello", toHex(enc, 0, 0));
                 privateRelay = true;
-            } catch (Exception e) {
+            } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
                 throw TeleportaError.withError(0x6004, e);
             }
         } else {
@@ -807,7 +807,7 @@ public class TeleportaClient extends AbstractClient{
                 for (Path e : dirStream) {
                     final File ff = e.toFile();
                     // ignore packed folders, caught in process
-                    if (ff.getName().endsWith(".tmpzip")) {
+                    if (ff.getName().endsWith( TeleportaCommons.FOLDERZIP_EXT)) {
                         continue;
                     }
                     if (!isAcceptable(ff)) {
@@ -817,7 +817,7 @@ public class TeleportaClient extends AbstractClient{
                     }
                     try {
                         sendFile(ff, id);
-                    } catch (Exception ee) {
+                    } catch (IOException ee) {
                         LOG.warning(TeleportaError.messageFor(0x7006,ee));
 
                     }

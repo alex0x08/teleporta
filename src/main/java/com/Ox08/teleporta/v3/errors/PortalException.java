@@ -1,8 +1,8 @@
 package com.Ox08.teleporta.v3.errors;
 /**
- * Ошибка вебсервиса шлюза
- *
- * @author Alex Chernyshev <alex3.145@gmail.com> *
+ * Portal exception, used as wrapper for all errors, raised in portal mode 
+ * 
+ * @author Alex Chernyshev <alex3.145@gmail.com> 
  * @since 3.0
  */
 public class PortalException extends TeleportationException {

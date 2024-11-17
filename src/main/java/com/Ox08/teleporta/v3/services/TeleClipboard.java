@@ -1,10 +1,10 @@
 package com.Ox08.teleporta.v3.services;
-import com.Ox08.teleporta.v3.Main;
 import com.Ox08.teleporta.v3.messages.TeleportaError;
 import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
 
 import java.awt.*;
 import java.awt.datatransfer.*;
+import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 /**
@@ -85,7 +85,7 @@ public class TeleClipboard {
                     }
                     handler.handle(data);
 
-                } catch (Exception ex) {
+                } catch (UnsupportedFlavorException | IOException ex) {
                     LOG.log(Level.WARNING, ex.getMessage(), ex);
                 }
             }

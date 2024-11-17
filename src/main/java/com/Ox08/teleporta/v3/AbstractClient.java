@@ -22,14 +22,22 @@ import java.util.zip.ZipOutputStream;
 
 import static com.Ox08.teleporta.v3.TeleportaCommons.isWindows;
 /**
- * Abstract parent client, that shares common functions between real Teleporta client and embedded, used on relay side
+ * Abstract parent client, that shares common functions between 
+ * real Teleporta client and embedded, which used on relay side.
  *
  * @since 3.1.5
  * @author 0x08
  */
 public abstract class AbstractClient {
     protected static final Logger LOG = Logger.getLogger("TC");
-    protected TeleCrypt tc = new TeleCrypt();
+    protected TeleCrypt tc = new TeleCrypt(); // shared instance with cryptographic functions
+                                              // it's ok, because each function is atomic
+    
+    /**
+     * Creates link to Teleporta's home on Desktop
+     * @param teleportaHome 
+     *          path to Teleporta's home
+     */
     protected static void createDesktopLink(File teleportaHome) {
         if (GraphicsEnvironment.isHeadless()) {
             return;
@@ -59,7 +67,8 @@ public abstract class AbstractClient {
             LOG.log(Level.WARNING, ex.getMessage(), ex);
         }
     }
-    protected SecretKeySpec readSessionKey(InputStream in, boolean allowEmpty, PrivateKey pkey) throws IOException {
+    protected SecretKeySpec readSessionKey(InputStream in, 
+            boolean allowEmpty, PrivateKey pkey) throws IOException {
         final byte[] key = new byte[TeleCrypt.SESSION_KEY_LEN];
         final int c = in.read(key);
         /*
@@ -109,9 +118,10 @@ public abstract class AbstractClient {
      * @return archived folder
      */
     public static File packFolder(File folder) {
-        final File out = new File(folder.getParentFile(), folder.getName() + ".tmpzip");
+        final File out = new File(folder.getParentFile(), 
+                folder.getName() +  TeleportaCommons.FOLDERZIP_EXT);
         try (FileOutputStream fout = new FileOutputStream(out);
-             final ZipOutputStream zos = new ZipOutputStream(fout)) {
+            final ZipOutputStream zos = new ZipOutputStream(fout)) {
             final Path pp = folder.toPath();
             try (Stream<Path> entries = Files.walk(pp)
                     .filter(path -> !Files.isDirectory(path))) {

@@ -3,7 +3,6 @@ import com.Ox08.teleporta.v3.messages.TeleportaError;
 import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
 import com.Ox08.teleporta.v3.services.TeleClipboard;
 import com.Ox08.teleporta.v3.services.TeleFilesWatch;
-
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
@@ -24,7 +23,6 @@ import java.util.logging.Level;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
-
 import static com.Ox08.teleporta.v3.TeleportaCommons.*;
 import static com.Ox08.teleporta.v3.TeleportaCommons.toHex;
 import static com.Ox08.teleporta.v3.TeleportaRelay.MAX_FILES_TO_LIST;
@@ -39,7 +37,6 @@ public class EmbeddedClient extends AbstractClient {
     private TeleClipboard clip;
     final TeleFilesWatch watch;
     final EmbeddedClientRuntimeContext ctx;
-
     public EmbeddedClient(EmbeddedClientRuntimeContext ctx) {
         this.ctx = ctx;
         // if clipboard monitoring is enabled - start it
@@ -47,7 +44,7 @@ public class EmbeddedClient extends AbstractClient {
             clip = new TeleClipboard(data -> {
                 try {
                     sendClipboard(data);
-                } catch (Exception e) {
+                } catch (IOException e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
                 }
             });
@@ -83,7 +80,6 @@ public class EmbeddedClient extends AbstractClient {
         if (createDesktopLink) {
             createDesktopLink(teleportaHome);
         }
-
         // register on relay
         if (!register()) {
             // should not happen
@@ -91,10 +87,9 @@ public class EmbeddedClient extends AbstractClient {
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.portalRegistered", ctx.sessionId));
-        }
-        // load portals list, don't touch watches initially, because output folder should be empty
-
+            LOG.fine(TeleportaSysMessage
+                    .of("teleporta.system.message.portalRegistered", ctx.sessionId));
+        }       
         // register watchers for each portal
         if (ctx.allowOutgoing && !ctx.relayCtx.portalNames.isEmpty()) {
             for (String n : ctx.relayCtx.portalNames.keySet()) {
@@ -121,7 +116,7 @@ public class EmbeddedClient extends AbstractClient {
                         ses.submit(() -> {
                             try {
                                 sendFile(f, id);
-                            } catch (Exception e) {
+                            } catch (IOException e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }
                         });
@@ -150,13 +145,13 @@ public class EmbeddedClient extends AbstractClient {
                         ses.submit(() -> {
                             try {
                                 downloadFile(file);
-                            } catch (Exception e) {
+                            } catch (IOException e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }
                         });
                     }
                 }
-            } catch (Exception e) {
+            } catch (IOException e) {
                 if (LOG.isLoggable(Level.FINE)) {
                     LOG.log(Level.FINE, e.getMessage(), e);
                 } else {
@@ -297,7 +292,7 @@ public class EmbeddedClient extends AbstractClient {
             final PublicKey pk = tc.restorePublicKey(foreignPk);
             final byte[] enc = tc.encryptKey(key.getEncoded(), pk);
             props.setProperty("fileKey", toHex(enc, 0, 0));
-        } catch (Exception e) {
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             // Error creating session key
             throw TeleportaError.withError(0x7213, e);
         }
@@ -405,7 +400,7 @@ public class EmbeddedClient extends AbstractClient {
                         // if its folder
                         case "folder": {
                             // note on extension
-                            final File outz = new File(f, name + ".tmpzip");
+                            final File outz = new File(f, name +  TeleportaCommons.FOLDERZIP_EXT);
                             // decrypt data
                             try (FileOutputStream fout = new FileOutputStream(outz)) {
                                 tc.decryptData(rkey, zin, fout);
@@ -460,19 +455,21 @@ public class EmbeddedClient extends AbstractClient {
         }
         try (BufferedInputStream bin = new BufferedInputStream(new FileInputStream(rFile), 4096);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
-            final SecretKeySpec rkey = readSessionKey(bin, false, ctx.relayCtx.relayPair.getPrivate());
+            final SecretKeySpec rkey = readSessionKey(bin, false,
+                    ctx.relayCtx.relayPair.getPrivate());
             if (rkey == null) {
                 return;
             }
             tc.decryptData(rkey, bin, bout);
             clip.setClipboard(bout.toString());
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardUpdated", bout.size()));
+                LOG.fine(TeleportaSysMessage
+                        .of("teleporta.system.message.clipboardUpdated", bout.size()));
             }
         }
     }
     public boolean register() {
-        String id = generateUniqueID() + "";
+        final String id = generateUniqueID() + "";
         // try name from environment
         String portalName = TeleportaClient.buildPortalName();
         ctx.relayCtx.portals.put(id, new TeleportaRelay.RuntimePortal(portalName,
@@ -480,7 +477,8 @@ public class EmbeddedClient extends AbstractClient {
         ctx.relayCtx.portalNames.put(portalName, id);
         ctx.sessionId = id;
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(String.format("self registered as '%s' on relay :", portalName));
+            LOG.fine(TeleportaSysMessage
+                    .of("teleporta.system.message.portalRegistered", portalName));
         }
         return true;
     }

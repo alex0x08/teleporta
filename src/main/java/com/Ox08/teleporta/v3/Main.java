@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
-import static com.Ox08.teleporta.v3.TeleportaCommons.setDebugLogging;
+import static com.Ox08.teleporta.v3.TeleportaCommons.setLogging;
 /**
  * Start class for both client and server sides.
  * Client side is called 'Portal' and server - 'Relay'
@@ -19,6 +19,12 @@ import static com.Ox08.teleporta.v3.TeleportaCommons.setDebugLogging;
 public class Main {
     public static void main(String[] args) throws Exception {
 
+        /*if (args.length>0) {
+            for (String a:args) {
+                System.out.println("arg="+a);
+            }
+        }*/
+        
         // try to load config file first (if exist)
         final File configFile = new File("teleporta.properties");
         boolean configLoaded = false;
@@ -66,14 +72,11 @@ public class Main {
         // check if debug messages enabled
         final boolean debugMessages = Boolean
                 .parseBoolean(System.getProperty("appDebug", "false"));
-        // adjust logging
-        if (debugMessages) {
-            setDebugLogging();
-        }
-
+        
+        setLogging(debugMessages);
+      
         // if there are no required params provided - start default relay and exit
         if (cleaned.isEmpty() && ! configLoaded) {
-
             startDefaultRelay(hasPropertiesSet);
             return;
         }
@@ -125,14 +128,18 @@ public class Main {
      */
     static void startDefaultRelay(boolean hasPropertiesSet) throws Exception {
         // load build info
-        SystemInfo.SI.load();
-
-        if (hasPropertiesSet) {
-            final boolean showLogo = Boolean.parseBoolean(
+        SystemInfo.SI.load();       
+        final boolean showLogo = Boolean.parseBoolean(
                     System.getProperty("showLogo", "true"));
-            if (showLogo) {
+        if (showLogo) {
                 printLogo(true);
-            }
+        }
+        final boolean debugMessages = Boolean
+                .parseBoolean(System.getProperty("appDebug", "false"));
+        // need to set in any case    
+        setLogging(debugMessages);
+        
+        if (hasPropertiesSet) {            
             // clipboard needs to be enabled both on relay and portal sides
             final boolean enableClipboard =
                     Boolean.parseBoolean(System.getProperty("clipboard", "false"));

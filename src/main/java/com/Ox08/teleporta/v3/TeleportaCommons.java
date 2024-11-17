@@ -5,13 +5,13 @@ import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import java.io.File;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Paths;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
 import java.security.spec.KeySpec;
 import java.util.Formatter;
 import java.util.HashMap;
@@ -28,6 +28,7 @@ import java.util.logging.Logger;
  */
 public class TeleportaCommons {
     private final static Logger LOG = Logger.getLogger("TC");
+    public static final String FOLDERZIP_EXT = ".tmpzip";
     // DTO to store portal details
     public static class RegisteredPortal {
         final String name; // unique portal name (human readable)
@@ -108,7 +109,7 @@ public class TeleportaCommons {
             final KeySpec specs = new PBEKeySpec(sharedSecret, info, 1024, 256);
             final SecretKey key = kf.generateSecret(specs);
             return key.getEncoded();
-        } catch (Exception e) {
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             throw new RuntimeException(e);
         }
     }
@@ -191,30 +192,35 @@ public class TeleportaCommons {
     }
 
     /**
-     * Enable debug logging
+     *  Setup logging
+     * @param debug
+     *          true - enable debug messages
      */
-    public static void setDebugLogging() {
+    public static void setLogging(boolean debug) {
+        if (debug) {
             // setup logging for client connection
             Logger.getLogger("sun.net.www.protocol.http.HttpURLConnection")
                     .setLevel(Level.ALL);
             // setup logging for relay connections
             Logger.getLogger("com.sun.net.httpserver")
                     .setLevel(Level.ALL);
-            final Logger topLogger = Logger.getLogger("");
-            // Handler for console (reuse it if it already exists)
-            Handler consoleHandler = null;
-            //see if there is already a console handler
-            for (Handler handler : topLogger.getHandlers()) {
+        }
+        final Logger topLogger = Logger.getLogger("");
+        // Handler for console (reuse it if it already exists)
+        Handler consoleHandler = null;
+        //see if there is already a console handler
+        for (Handler handler : topLogger.getHandlers()) {
                 if (handler instanceof ConsoleHandler) {
                     //found the console handler
                     consoleHandler = handler;
                     break;
                 }
-            }
-            if (consoleHandler == null) {
+        }
+        
+        if (consoleHandler == null) {
                 consoleHandler = new ConsoleHandler();
                 topLogger.addHandler(consoleHandler);
-            }
+        }
         // note: we need to change console encoding for Windows & Russian locale,
         //       because it uses different codepages for UI and console
         //       and Charset.defaultCharset() responds cp1251 where console
@@ -227,8 +233,10 @@ public class TeleportaCommons {
         } catch (UnsupportedEncodingException e) {
             throw TeleportaError.withError(0x600,e);
         }
-        consoleHandler.setLevel(Level.ALL);
-        LOG.setLevel(Level.ALL);
+        if (debug) {
+            consoleHandler.setLevel(Level.ALL);
+            LOG.setLevel(Level.ALL);
+        }
     }
 
     public static boolean isWindows() {

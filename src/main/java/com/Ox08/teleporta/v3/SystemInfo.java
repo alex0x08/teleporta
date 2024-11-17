@@ -15,7 +15,6 @@
  */
 package com.Ox08.teleporta.v3;
 import com.Ox08.teleporta.v3.messages.TeleportaError;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
@@ -40,7 +39,6 @@ public class SystemInfo {
     public String getBuildNum() {
         return buildNum;
     }
-
     public void load() {
         if (wasLoaded) {
             throw TeleportaError.withError(0x7270);

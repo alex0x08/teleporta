@@ -1,4 +1,5 @@
 package com.Ox08.teleporta.v3;
+import com.Ox08.teleporta.v3.errors.TeleportationException;
 import com.Ox08.teleporta.v3.messages.TeleportaError;
 
 import javax.crypto.*;
@@ -36,7 +37,9 @@ public class TeleCrypt {
             final Cipher encryptCipher = Cipher.getInstance("RSA");
             encryptCipher.init(Cipher.DECRYPT_MODE, privateKey);
             return encryptCipher.doFinal(data);
-        } catch (Exception e) {
+        } catch (InvalidKeyException | NoSuchAlgorithmException 
+                | BadPaddingException | IllegalBlockSizeException 
+                | NoSuchPaddingException e) {
             // error decrypting session key
             throw TeleportaError.withError(0x7014,e);
         }
@@ -55,7 +58,9 @@ public class TeleCrypt {
             final Cipher encryptCipher = Cipher.getInstance("RSA");
             encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
             return encryptCipher.doFinal(data);
-        } catch (Exception e) {
+        } catch (InvalidKeyException | NoSuchAlgorithmException 
+                | BadPaddingException | IllegalBlockSizeException 
+                | NoSuchPaddingException e) {
             // error encrypting session key
             throw TeleportaError.withError(0x7015,e);
         }
@@ -99,7 +104,10 @@ public class TeleCrypt {
                 while ((bytesRead = cipherIn.read(buffer)) != -1) {
                     outputStream.write(buffer, 0, bytesRead);
                 }
-        } catch (Exception e) {
+        } catch (TeleportationException | IOException 
+                | InvalidAlgorithmParameterException 
+                | InvalidKeyException | NoSuchAlgorithmException 
+                | NoSuchPaddingException e) {
             throw TeleportaError.withError(0x7008,e);
         }
     }
@@ -130,7 +138,9 @@ public class TeleCrypt {
                 cipherOut.flush();
             }
             cipherOut.doFinal();
-        } catch (Exception e) {
+        } catch (IOException | InvalidAlgorithmParameterException 
+                | InvalidKeyException | NoSuchAlgorithmException 
+                | NoSuchPaddingException e) {
             throw TeleportaError.withError(0x7007,e);
         }
     }
@@ -176,7 +186,10 @@ public class TeleCrypt {
                 cipherOut.write(buffer, 0, bytesRead);
             }
             cipherOut.doFinal();
-        } catch (Exception e) {
+        } catch (TeleportationException | IOException 
+                | InvalidAlgorithmParameterException 
+                | InvalidKeyException | NoSuchAlgorithmException 
+                | NoSuchPaddingException e) {
             throw TeleportaError.withError(0x7013,e);
         }
     }
@@ -225,10 +238,9 @@ public class TeleCrypt {
         private byte[] obuffer;
         private boolean closed;
         public NonclosableCipherOutputStream(OutputStream var1, Cipher var2) {
-            super(var1);
-            this.output = var1;
-            this.cipher = var2;
+            super(var1); this.output = var1; this.cipher = var2;
         }
+        @Override
         public void write(int var1) throws IOException {
             this.ibuffer[0] = (byte) var1;
             this.obuffer = this.cipher.update(this.ibuffer, 0, 1);
@@ -237,9 +249,11 @@ public class TeleCrypt {
                 this.obuffer = null;
             }
         }
+        @Override
         public void write(byte[] var1) throws IOException {
             this.write(var1, 0, var1.length);
         }
+        @Override
         public void write(byte[] var1, int var2, int var3) throws IOException {
             this.obuffer = this.cipher.update(var1, var2, var3);
             if (this.obuffer != null) {
@@ -247,6 +261,7 @@ public class TeleCrypt {
                 this.obuffer = null;
             }
         }
+        @Override
         public void flush() throws IOException {
             if (this.obuffer != null) {
                 this.output.write(this.obuffer);
@@ -276,6 +291,7 @@ public class TeleCrypt {
             }
         }
     }
+    // test flow
     public static void main(String[] args) throws Exception {
         TeleCrypt tc = new TeleCrypt();
         KeyPair pair = tc.generateKeys();
