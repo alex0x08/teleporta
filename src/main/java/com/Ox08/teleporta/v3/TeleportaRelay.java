@@ -198,6 +198,7 @@ public class TeleportaRelay {
         final KeyPair relayPair; // relay keys
         final boolean privateRelay, // if true - we operate in 'private relay' mode
                 allowClipboardTransfer; // if true - we allow clipboard transfers
+        File currentCbFile; // current clipboard data
         RelayRuntimeContext(File storageDir, KeyPair kp,
                             boolean privateRelay,boolean allowClipboardTransfer) {
             this.storageDir = storageDir;
@@ -635,9 +636,9 @@ public class TeleportaRelay {
                 LOG.fine(TeleportaSysMessage.of("teleporta.system.message.from", from));
             }
             // build clipboard file
-            final File out = new File(rc.storageDir, "cb.dat");
-            // if it's not exist or not readable - just respond bad request
-            if ((!out.exists() || !out.isFile() || !out.canRead()) && !out.createNewFile()) {
+            final File out = new File(rc.storageDir, System.currentTimeMillis()+"_cb.dat");
+            // if not created - just respond bad request
+            if (!out.createNewFile()) {
                 // clipboard file not found
                 LOG.warning(TeleportaError.messageFor(0x7222,
                         out.getAbsolutePath()));
@@ -655,6 +656,14 @@ public class TeleportaRelay {
                     LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardUploaded",
                             out.getAbsolutePath()));
                 }
+                // try to delete previous clipboard data
+                if (rc.currentCbFile!=null && !rc.currentCbFile.delete()) {
+                        // cannot delete file
+                        LOG.warning(TeleportaError.messageFor(0x6106,
+                                out.getAbsolutePath()));
+                }
+                // attach current clipboard file to context
+                rc.currentCbFile = out;
                 // notify all other about clipboard update
                 for (String k : rc.portals.keySet()) {
                     if (k.equals(from)) {
@@ -667,14 +676,12 @@ public class TeleportaRelay {
                 httpExchange.sendResponseHeaders(200, 0);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
-                try {
                     if (!out.delete()) {
                         // cannot delete file
                         LOG.warning(TeleportaError.messageFor(0x6106,
                                 out.getAbsolutePath()));
                     }
-                } catch (Exception ignored) {
-                }
+
                 //  respond 500 with no data
                 respondAndClose(500, httpExchange);
             }
@@ -697,6 +704,7 @@ public class TeleportaRelay {
                 respondAndClose(400, httpExchange);
                 return;
             }
+
             final String to = params.get("to"); // target portal's id
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(TeleportaSysMessage.of("teleporta.system.message.to", to));
@@ -707,14 +715,14 @@ public class TeleportaRelay {
                 respondAndClose(403, httpExchange);
                 return;
             }
+
             // get target portal
             final RuntimePortal p = rc.portals.get(to);
             // check for clipboard file
-            final File rFile = new File(rc.storageDir, "cb.dat");
-            if (!rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
+            final File rFile = rc.currentCbFile; // new File(rc.storageDir, "cb.dat");
+            if (rFile ==null ||!rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
                 p.needLoadClipboard = false;
-                LOG.warning(TeleportaError.messageFor(0x7222,
-                        rFile.getAbsolutePath()));
+                LOG.warning(TeleportaError.messageFor(0x7222,""));
                 respondAndClose(400, httpExchange);
                 return;
             }

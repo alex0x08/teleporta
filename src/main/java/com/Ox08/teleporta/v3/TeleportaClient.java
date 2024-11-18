@@ -141,11 +141,11 @@ public class TeleportaClient extends AbstractClient{
         c.reloadPortals(false);
         // register watchers for each portal
         if (ctx.allowOutgoing && !ctx.portalNames.isEmpty()) {
-
+            // if we're not cleaning outgoing - try to send all non-delivered files first
             if (!clearOutgoing) {
                 c.sendAllNotDelivered(outputDir,ctx.useLockFile);
             }
-
+            // create watchers for each registered portal
             for (String n : ctx.portalNames.keySet()) {
                     final File f = new File(outputDir, n);
                     checkCreateFolder(f);
@@ -170,6 +170,7 @@ public class TeleportaClient extends AbstractClient{
                 final String id = ctx.portalNames.get(receiver_name);
                 try {
                     for (File f : files) {
+                        // don't react if there is network error
                         if (c.networkError) {
                             break;
                         }
@@ -195,20 +196,24 @@ public class TeleportaClient extends AbstractClient{
         c.pollRunning = true;
         // schedule poll for incoming files
         ses.scheduleAtFixedRate(() -> {
+            // check if poll stopped
             if (!c.pollRunning) {
                 return;
             }
             try {
+                // get pending files
                 final String[] files = c.getPending();
+                // if there was no 'connection error' raised - remove 'network error' mark
                 if (c.networkError) {
                     c.networkError = false; // first successful request turns this switch off
                 }
+                // if there are pending files - try to download them
                 if (files != null) {
                     if (LOG.isLoggable(Level.FINE)) {
                         LOG.fine(TeleportaSysMessage
                                 .of("teleporta.system.message.foundPendingFiles", files.length));
                     }
-                    // there could be only few files always, no need for dir streaming
+                    // there could be only *few* files always, no need for dir streaming
                     for (String file : files) {
                         ses.submit(() -> {
                             try {
@@ -223,13 +228,16 @@ public class TeleportaClient extends AbstractClient{
                 // don't log all the time
                 if (c.networkError) {
                     return;
+                } else {
+                    // put 'network error' mark on any exception
+                    c.networkError = true;
                 }
                 if (LOG.isLoggable(Level.FINE)) {
                     LOG.log(Level.FINE, e.getMessage(), e);
                 } else {
                     LOG.warning(e.getMessage());
                 }
-                c.networkError = true;
+
             }
         }, 0, 5, TimeUnit.SECONDS);
 
@@ -249,6 +257,7 @@ public class TeleportaClient extends AbstractClient{
                 ctx.sessionId,
                 System.currentTimeMillis()));
         final URLConnection con = u.openConnection();
+        // no need to check class, there always will be just HttpURLConnection
         final HttpURLConnection http = (HttpURLConnection) con;
         int code = http.getResponseCode();
         if (code != HttpURLConnection.HTTP_OK) {
@@ -276,19 +285,25 @@ public class TeleportaClient extends AbstractClient{
                 props.load(bin);
             }
         }
-        // props.load(http.getInputStream());
+        // no properties at all - means no pending files and no additional commands - just return null
         if (props.isEmpty()) {
             return null;
         }
+        // if there is 'reload portals' mark, the client needs to re-fetch list of registered portals from relay
+        // this is used, when new portal registering and relay need to warn all other portals
         if (props.containsKey("reloadPortals")) {
             reloadPortals(true);
         }
+        // check for 'clipboard update' mark, if it present - portal need to download updated clipboard data from relay
         if (props.containsKey("updateClipboard")) {
             downloadClipboard();
         }
+        // if there is no 'files' property - just respond null
         if (!props.containsKey("files")) {
             return null;
         }
+        // finally, if there is 'files' field, split it by ',' and respond as array
+        // if there is no ',' - array with single item will be returned.
         return props.getProperty("files").split(",");
     }
 

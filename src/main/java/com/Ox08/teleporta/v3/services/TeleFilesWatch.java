@@ -27,7 +27,6 @@ public class TeleFilesWatch {
     private final ScheduledExecutorService ses;
     // actual watcher implementation used
     private final FolderWatcher watcher;
-
     private final Object l = new Object();
     private final Queue<FileEvent> fq = new ConcurrentLinkedQueue<>();
     private final List<FileProcessHandler> ph = new ArrayList<>();

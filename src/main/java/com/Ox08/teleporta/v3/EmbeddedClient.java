@@ -15,7 +15,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -24,7 +23,6 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 import static com.Ox08.teleporta.v3.TeleportaCommons.*;
-import static com.Ox08.teleporta.v3.TeleportaCommons.toHex;
 import static com.Ox08.teleporta.v3.TeleportaRelay.MAX_FILES_TO_LIST;
 /**
  * This is embedded client, used when Relay also act as portal
@@ -81,11 +79,7 @@ public class EmbeddedClient extends AbstractClient {
             createDesktopLink(teleportaHome);
         }
         // register on relay
-        if (!register()) {
-            // should not happen
-            System.exit(1);
-            return;
-        }
+        register();
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine(TeleportaSysMessage
                     .of("teleporta.system.message.portalRegistered", ctx.sessionId));
@@ -163,7 +157,9 @@ public class EmbeddedClient extends AbstractClient {
     /**
      * Pending files are read directly from relay's folder
      * @return
+     *      array with pending files ids
      * @throws IOException
+     *          on i/o errors
      */
     public String[] getPending() throws IOException {
         // on relay's side
@@ -171,10 +167,12 @@ public class EmbeddedClient extends AbstractClient {
         final TeleportaRelay.RuntimePortal p = ctx.relayCtx.portals.get(ctx.sessionId);
         // mark 'last seen online'
         p.lastSeen = System.currentTimeMillis();
-        // put mark if client must reload portals list
-        if (p.needReloadPortals) {
-            reloadPortals(true);
+
+        // update folder watchers, if we allow outgoing processing
+        if (ctx.allowOutgoing && p.needReloadPortals) {
+            reloadPortals();
         }
+        // set updated clipboard data, if required
         if (p.needLoadClipboard) {
             downloadClipboard();
         }
@@ -206,7 +204,11 @@ public class EmbeddedClient extends AbstractClient {
         }
         return files.toArray(new String[0]);
     }
-
+    /**
+     * Remove expired portals
+     * @param expiredPortals
+     *          set with portals names
+     */
     public void removeExpired(Set<String> expiredPortals) {
         if (!ctx.allowOutgoing) {
             return;
@@ -220,13 +222,9 @@ public class EmbeddedClient extends AbstractClient {
         }
     }
     /**
-     * Reload is used to update watchers only
-     * @param updateWatcher
+     * In embedded client, this function is used to update watchers only
      */
-    public void reloadPortals(boolean updateWatcher) {
-        if (!ctx.allowOutgoing || !updateWatcher) {
-            return;
-        }
+    public void reloadPortals() {
         final File outputDir = new File(ctx.storageDir, "to");
         for (String p : ctx.relayCtx.portalNames.keySet()) {
             final File f = new File(outputDir, p);
@@ -237,39 +235,56 @@ public class EmbeddedClient extends AbstractClient {
             }
         }
     }
+    /**
+     * Publish clipboard update to relay
+     * @param data
+     *          updated data
+     * @throws IOException
+     *              on I/O errors
+     */
     public void sendClipboard(String data) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendingClipboard", data.length()));
         }
-        final File cbout = new File(ctx.relayCtx.storageDir, "cb.dat");
-        // if it's not exist or not readable - just respond bad request
-        if ((!cbout.exists() || !cbout.isFile() || !cbout.canRead()) && !cbout.createNewFile()) {
+        if (ctx.relayCtx.currentCbFile!=null && !ctx.relayCtx.currentCbFile.delete()) {
+                // cannot delete file
+                LOG.warning(TeleportaError.messageFor(0x6106,
+                        ctx.relayCtx.currentCbFile.getAbsolutePath()));
+        }
+        final File cbout = new File(ctx.relayCtx.storageDir,System.currentTimeMillis() + "_cb.dat");
+        // if it's cannot been created - just respond bad request
+        if (!cbout.createNewFile()) {
             // clipboard file not found
             LOG.warning(TeleportaError.messageFor(0x7222,
                     cbout.getAbsolutePath()));
             return;
         }
         final SecretKey key;
-        try (OutputStream out = new FileOutputStream(cbout);
+        try (OutputStream out = Files.newOutputStream(cbout.toPath());
              ByteArrayInputStream in = new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8))) {
+            // generate session key (AES)
             key = tc.generateFileKey();
             final byte[] foreignPk = ctx.relayCtx.relayPair.getPublic().getEncoded();
             final PublicKey pk = tc.restorePublicKey(foreignPk);
+            // encrypt session key by using relay's public key
             final byte[] enc = tc.encryptKey(key.getEncoded(), pk);
+            // write it to underying stream
             out.write(enc);
             out.flush();
+            // encrypt clipboard data
             tc.encryptData(key, in, out);
             out.flush();
-
+            // set uploaded clipboard content as current
+            ctx.relayCtx.currentCbFile = cbout;
             // notify all other about clipboard update
             for (String k : ctx.relayCtx.portals.keySet()) {
+                // ignore self
                 if (k.equals(ctx.sessionId)) {
                     continue;
                 }
                 final TeleportaRelay.RuntimePortal p = ctx.relayCtx.portals.get(k);
-                p.needLoadClipboard = true;
+                p.needLoadClipboard = true; // put mark to update clipboard
             }
-
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             // Error encrypting clipboard data
             throw TeleportaError.withError(0x7214, e);
@@ -278,6 +293,15 @@ public class EmbeddedClient extends AbstractClient {
             LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardSent", data.length()));
         }
     }
+    /**
+     * Send file to remote portal
+     * @param file
+     *          source file
+     * @param receiverId
+     *          target portal's id
+     * @throws IOException
+     *          on I/O errors
+     */
     public void sendFile(File file, String receiverId) throws IOException {
         final TeleportaCommons.RegisteredPortal p = ctx.relayCtx.portals.get(receiverId);
         // build metadata
@@ -305,9 +329,9 @@ public class EmbeddedClient extends AbstractClient {
         // note: if file is directory - we create temp archive and then
         // encrypt & send it instead of each file in folder
         final File packedF = file.isDirectory() ? packFolder(file) : null;
-        try (ZipOutputStream zout = new ZipOutputStream(new FileOutputStream(out));
+        try (ZipOutputStream zout = new ZipOutputStream(Files.newOutputStream(out.toPath()));
              //read packed folder instead of file
-             FileInputStream in = new FileInputStream(packedF != null ? packedF : file)) {
+            FileInputStream in = new FileInputStream(packedF != null ? packedF : file)) {
             zout.putNextEntry(new ZipEntry("meta.properties"));
             props.store(zout, "");
             zout.putNextEntry(new ZipEntry("file.content"));
@@ -331,9 +355,11 @@ public class EmbeddedClient extends AbstractClient {
         }
     }
     /**
-     * This actually copies file with decryption from relay's folder to portal
+     * This actually copies file with stream decryption from relay's folder to portal
      * @param fileId
+     *          pending file id
      * @throws IOException
+     *          on i/o errors
      */
     public void downloadFile(String fileId) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
@@ -349,7 +375,7 @@ public class EmbeddedClient extends AbstractClient {
         }
         final Properties props = new Properties();
         // we do unpack & decrypt on the fly, without any temp files
-        try (ZipInputStream zin = new ZipInputStream(new FileInputStream(rFile))) {
+        try (ZipInputStream zin = new ZipInputStream(Files.newInputStream(rFile.toPath()))) {
             for (ZipEntry ze; (ze = zin.getNextEntry()) != null; ) {
                 if (ze.isDirectory() || ze.getName().isEmpty()) {
                     continue;
@@ -440,20 +466,25 @@ public class EmbeddedClient extends AbstractClient {
             }
         }
     }
+    /**
+     * This actually loads clipboard update from relay's context, without networking
+     * @throws IOException
+     */
     public void downloadClipboard() throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine(TeleportaSysMessage.of("teleporta.system.message.downloadingClipboard"));
         }
         final TeleportaRelay.RuntimePortal p = ctx.relayCtx.portals.get(ctx.sessionId);
+        // put the mark first, to disallow repeats
         p.needLoadClipboard = false;
 
-        final File rFile = new File(ctx.relayCtx.storageDir, "cb.dat");
-        if (!rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
+        final File rFile = ctx.relayCtx.currentCbFile; // new File(ctx.relayCtx.storageDir, "cb.dat");
+        if (rFile==null || !rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
             LOG.warning(TeleportaError.messageFor(0x7222,
-                    rFile.getAbsolutePath()));
+                    rFile!=null ? rFile.getAbsolutePath() : ""));
             return;
         }
-        try (BufferedInputStream bin = new BufferedInputStream(new FileInputStream(rFile), 4096);
+        try (BufferedInputStream bin = new BufferedInputStream(Files.newInputStream(rFile.toPath()), 4096);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
             final SecretKeySpec rkey = readSessionKey(bin, false,
                     ctx.relayCtx.relayPair.getPrivate());
@@ -468,7 +499,10 @@ public class EmbeddedClient extends AbstractClient {
             }
         }
     }
-    public boolean register() {
+    /**
+     * Register embedded client without networking
+     */
+    public void register() {
         final String id = generateUniqueID() + "";
         // try name from environment
         String portalName = TeleportaClient.buildPortalName();
@@ -480,7 +514,6 @@ public class EmbeddedClient extends AbstractClient {
             LOG.fine(TeleportaSysMessage
                     .of("teleporta.system.message.portalRegistered", portalName));
         }
-        return true;
     }
 
     public static class EmbeddedClientRuntimeContext {

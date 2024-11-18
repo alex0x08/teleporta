@@ -18,13 +18,6 @@ import static com.Ox08.teleporta.v3.TeleportaCommons.setLogging;
  */
 public class Main {
     public static void main(String[] args) throws Exception {
-
-        /*if (args.length>0) {
-            for (String a:args) {
-                System.out.println("arg="+a);
-            }
-        }*/
-        
         // try to load config file first (if exist)
         final File configFile = new File("teleporta.properties");
         boolean configLoaded = false;
@@ -47,7 +40,6 @@ public class Main {
 
         // if no arguments provided and no config found - just start default relay
         if (args.length == 0 && !configLoaded) {
-            //printHelp();
             startDefaultRelay(false);
             return;
         }
@@ -76,7 +68,7 @@ public class Main {
         setLogging(debugMessages);
       
         // if there are no required params provided - start default relay and exit
-        if (cleaned.isEmpty() && ! configLoaded) {
+        if (cleaned.isEmpty() && !configLoaded) {
             startDefaultRelay(hasPropertiesSet);
             return;
         }
