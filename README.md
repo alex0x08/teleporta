@@ -4,6 +4,7 @@ Teleporting files from Bob to Alice since 2015. Community edition.
 This is our internal tool, dedicated to fast and secure file exchange within a team.
 
 An article with detailed project description could be found here (in Russian): [https://blog.0x08.ru/teleporta](https://blog.0x08.ru/teleporta)
+
 In action:
 ![In short](https://github.com/alex0x08/teleporta/blob/main/images/316/teleporta-demo.gif?raw=true)
 Clipboard transfer:
@@ -79,6 +80,10 @@ Just keep in mind that local relay will already have a portal named as hostname,
 ![Sample 1](https://github.com/alex0x08/teleporta/blob/main/images/screen1.gif?raw=true)
 ![Sample 2](https://github.com/alex0x08/teleporta/blob/main/images/screen2.gif?raw=true)
 ![Sample 3](https://github.com/alex0x08/teleporta/blob/main/images/screen3.gif?raw=true)
+
+FreeBSD:
+![Sample 4](https://github.com/alex0x08/teleporta/blob/main/images/inaction/teleporta-freebsd.jpg?raw=true)
+
 
 # Cryptography
 
