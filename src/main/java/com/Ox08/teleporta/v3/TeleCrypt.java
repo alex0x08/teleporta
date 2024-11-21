@@ -7,10 +7,16 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.*;
 import java.security.spec.EncodedKeySpec;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+
 /**
  * Teleporta Cryptography
  *
@@ -19,6 +25,9 @@ import java.security.spec.X509EncodedKeySpec;
  */
 public class TeleCrypt {
     public static final int SESSION_KEY_LEN = 256;
+
+    public static final String SESSION_CYPHER= "AES/CBC/PKCS5Padding",
+            PK_CYPHER = "RSA";
     /**
      * Decrypt session AES key with RSA private key
      * @param data
@@ -34,7 +43,7 @@ public class TeleCrypt {
              * note: Cipher instances are *not* thread-safe and both decrypt and encrypt
              * actions could start in same time
              */
-            final Cipher encryptCipher = Cipher.getInstance("RSA");
+            final Cipher encryptCipher = Cipher.getInstance(PK_CYPHER);
             encryptCipher.init(Cipher.DECRYPT_MODE, privateKey);
             return encryptCipher.doFinal(data);
         } catch (InvalidKeyException | NoSuchAlgorithmException 
@@ -55,7 +64,7 @@ public class TeleCrypt {
      */
     public byte[] encryptKey(byte[] data, Key publicKey) {
         try {
-            final Cipher encryptCipher = Cipher.getInstance("RSA");
+            final Cipher encryptCipher = Cipher.getInstance(PK_CYPHER);
             encryptCipher.init(Cipher.ENCRYPT_MODE, publicKey);
             return encryptCipher.doFinal(data);
         } catch (InvalidKeyException | NoSuchAlgorithmException 
@@ -73,7 +82,7 @@ public class TeleCrypt {
      *      shouldn't happen for RSA
      */
     public KeyPair generateKeys() throws NoSuchAlgorithmException {
-        final KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        final KeyPairGenerator generator = KeyPairGenerator.getInstance(PK_CYPHER);
         generator.initialize(2048);
         return generator.generateKeyPair();
     }
@@ -95,7 +104,7 @@ public class TeleCrypt {
                 // incorrect IV size
                 throw TeleportaError.withError(0x7012);
             }
-            final Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
             final byte[] buffer = new byte[4096];
             int bytesRead;
@@ -111,6 +120,42 @@ public class TeleCrypt {
             throw TeleportaError.withError(0x7008,e);
         }
     }
+
+
+    public void decryptFolder(SecretKey key,
+                            InputStream inputStream, File zipFolder) {
+        try {
+            final byte[] fileIv = new byte[16];
+            // read stored IV
+            if (inputStream.read(fileIv)!=16) {
+                // incorrect IV size
+                throw TeleportaError.withError(0x7012);
+            }
+            final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
+            cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
+            // don't wrap in try-catch - don't close it there!
+            final CipherInputStream cipherIn = new CipherInputStream(inputStream, cipher);
+            final ZipInputStream zipIn = new ZipInputStream(cipherIn);
+            for (ZipEntry ze; (ze = zipIn.getNextEntry()) != null; ) {
+                final Path resolvedPath = zipFolder
+                        .getParentFile().toPath().resolve(ze.getName());
+                if (ze.isDirectory()) {
+                    Files.createDirectories(resolvedPath);
+                } else {
+                    Files.createDirectories(resolvedPath.getParent());
+                    Files.copy(zipIn, resolvedPath);
+                }
+            }
+
+        } catch (TeleportationException | IOException
+                 | InvalidAlgorithmParameterException
+                 | InvalidKeyException | NoSuchAlgorithmException
+                 | NoSuchPaddingException e) {
+            throw TeleportaError.withError(0x7008,e);
+        }
+    }
+
+
     /**
      * Encrypt data
      * @param key
@@ -123,7 +168,7 @@ public class TeleCrypt {
     public void encryptData(SecretKey key,
                             InputStream inputStream, OutputStream outputStream) {
         try {
-            final Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
             cipher.init(Cipher.ENCRYPT_MODE, key, generateIv());
             // note: required custom implementation to avoid closing of parent stream
             final NonclosableCipherOutputStream cipherOut
@@ -141,6 +186,56 @@ public class TeleCrypt {
         } catch (IOException | InvalidAlgorithmParameterException 
                 | InvalidKeyException | NoSuchAlgorithmException 
                 | NoSuchPaddingException e) {
+            throw TeleportaError.withError(0x7007,e);
+        }
+    }
+
+
+    /**
+     * Encrypt & send folder to output stream
+     * @param key
+     * @param folder
+     * @param outputStream
+     */
+    public void encryptFolder(SecretKey key,
+                            File folder, OutputStream outputStream) {
+        try {
+            final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
+            cipher.init(Cipher.ENCRYPT_MODE, key, generateIv());
+            // note: required custom implementation to avoid closing of parent stream
+            final NonclosableCipherOutputStream cipherOut
+                    = new NonclosableCipherOutputStream(outputStream, cipher);
+            // store IV directly in file as first 16 bytes
+            final byte[] iv = cipher.getIV();
+            outputStream.write(iv);
+            final ZipOutputStream zos = new ZipOutputStream(cipherOut);
+
+            final Path pp = folder.toPath();
+            try (Stream<Path> entries = Files.walk(pp)
+                    .filter(path -> !Files.isDirectory(path))) {
+                // folders will be added automatically
+                entries.forEach(path -> {
+                    final ZipEntry zipEntry = new ZipEntry(
+                            (folder.getName()
+                                    + '/'
+                                    + pp.relativize(path))
+                                    // ZIP requires / slash not \
+                                    .replaceAll("\\\\", "/"));
+                    try {
+                        zos.putNextEntry(zipEntry);
+                        Files.copy(path, zos);
+                        zos.closeEntry();
+                    } catch (IOException e) {
+                        // throw this exception to parent
+                        throw new RuntimeException(e);
+                    }
+                });
+            }
+
+            cipherOut.doFinal();
+        } catch (IOException | InvalidAlgorithmParameterException
+                 | InvalidKeyException | NoSuchAlgorithmException
+                 | NoSuchPaddingException e) {
             throw TeleportaError.withError(0x7007,e);
         }
     }
@@ -169,9 +264,9 @@ public class TeleCrypt {
                 // incorrect IV size
                 throw TeleportaError.withError(0x7012);
             }
-            final Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
-            final Cipher cipher2 = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            final Cipher cipher2 = Cipher.getInstance(SESSION_CYPHER);
             cipher2.init(Cipher.ENCRYPT_MODE, key2, generateIv());
             final NonclosableCipherOutputStream cipherOut
                     = new NonclosableCipherOutputStream(outputStream, cipher2);
@@ -203,7 +298,7 @@ public class TeleCrypt {
      */
     public PublicKey restorePublicKey(byte[] data)
             throws NoSuchAlgorithmException, InvalidKeySpecException {
-        final KeyFactory publicKeyFactory = KeyFactory.getInstance("RSA");
+        final KeyFactory publicKeyFactory = KeyFactory.getInstance(PK_CYPHER);
         return publicKeyFactory.generatePublic(new X509EncodedKeySpec(data));
     }
     /**

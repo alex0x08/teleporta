@@ -5,7 +5,9 @@ import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import java.io.File;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.ServerSocket;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Paths;
@@ -28,7 +30,7 @@ import java.util.logging.Logger;
  */
 public class TeleportaCommons {
     private final static Logger LOG = Logger.getLogger("TC");
-    public static final String FOLDERZIP_EXT = ".tmpzip";
+    //public static final String FOLDERZIP_EXT = ".tmpzip";
     // DTO to store portal details
     public static class RegisteredPortal {
         final String name; // unique portal name (human readable)
@@ -90,6 +92,14 @@ public class TeleportaCommons {
     public static String buildServerUrl(String seed, String url) {
         final byte[] url1 = deriveKey(extractSeed(seed), url.getBytes());
         return toHex(url1, 0, 8);
+    }
+
+    public static int findFreePort() {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        } catch (IOException ignored) {
+            return -1;
+        }
     }
     /**
      * Decode URL endpoint

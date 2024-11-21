@@ -5,20 +5,14 @@ import com.Ox08.teleporta.v3.services.TeleLnk;
 import javax.crypto.spec.SecretKeySpec;
 import java.awt.*;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
 
 import static com.Ox08.teleporta.v3.TeleportaCommons.isWindows;
 /**
@@ -105,64 +99,7 @@ public abstract class AbstractClient {
         // try to restore it, to being used later
         return new SecretKeySpec(dec, "AES");
     }
-    /**
-     * Unpacks received zip file back to folder with files
-     *
-     * @param zipfolder zip archive with folder contents
-     */
-    public static void unpackFolder(final File zipfolder) {
-        try (final ZipInputStream zipIn = new ZipInputStream(Files.newInputStream(zipfolder.toPath()))) {
-            for (ZipEntry ze; (ze = zipIn.getNextEntry()) != null; ) {
-                final Path resolvedPath = zipfolder
-                        .getParentFile().toPath().resolve(ze.getName());
-                if (ze.isDirectory()) {
-                    Files.createDirectories(resolvedPath);
-                } else {
-                    Files.createDirectories(resolvedPath.getParent());
-                    Files.copy(zipIn, resolvedPath);
-                }
-            }
-        } catch (Exception e) {
-            throw TeleportaError.withError(0x7004, e);
-        }
-    }
-    /**
-     * Pack folder into single ZIP file
-     *
-     * @param folder source folder
-     * @return archived folder
-     */
-    public static File packFolder(File folder) {
-        final File out = new File(folder.getParentFile(), 
-                folder.getName() +  TeleportaCommons.FOLDERZIP_EXT);
-        try (FileOutputStream fout = new FileOutputStream(out);
-            final ZipOutputStream zos = new ZipOutputStream(fout)) {
-            final Path pp = folder.toPath();
-            try (Stream<Path> entries = Files.walk(pp)
-                    .filter(path -> !Files.isDirectory(path))) {
-                // folders will be added automatically
-                entries.forEach(path -> {
-                    final ZipEntry zipEntry = new ZipEntry(
-                            (folder.getName()
-                                    + '/'
-                                    + pp.relativize(path))
-                                    // ZIP requires / slash not \
-                                    .replaceAll("\\\\", "/"));
-                    try {
-                        zos.putNextEntry(zipEntry);
-                        Files.copy(path, zos);
-                        zos.closeEntry();
-                    } catch (IOException e) {
-                        // throw this exception to parent
-                        throw new RuntimeException(e);
-                    }
-                });
-            }
-        } catch (Exception e) {
-            throw TeleportaError.withError(0x7005, e);
-        }
-        return out;
-    }
+
     /**
      * Build portal name
      *

@@ -40,6 +40,10 @@ public class TeleportaRelay {
     public static final int MAX_PORTALS = 500,
             MAX_FILES_TO_LIST = 10,
             NON_DELIVERED_EXPIRE = 60 * 60 * 1000;
+
+    private static final String EXT_UPLOAD = ".upload",
+                                EXT_FILE =".dat";
+
     private final static Logger LOG = Logger.getLogger("TC");
     private final static ScheduledExecutorService ses = Executors.newScheduledThreadPool(1);
 
@@ -54,7 +58,7 @@ public class TeleportaRelay {
         System.setProperty("javax.net.debug", "all");
         System.setProperty("seed", "testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa");
         // System.setProperty("privateRelay","true");
-        init(false,false,true);
+        init(false,false,false);
     }
 
     /**
@@ -72,7 +76,7 @@ public class TeleportaRelay {
     public static void init(boolean allowClipboard,
             boolean clearOutgoing,
             boolean relayHasPortal) throws Exception {
-        final int port = Integer.parseInt(System.getProperty("appPort", "8989"));
+        int port = Integer.parseInt(System.getProperty("appPort", "0"));
         // get relay home folder
         final File teleportaHome = checkCreateHomeFolder("teleporta-relay");
         if (clearOutgoing) {
@@ -91,6 +95,15 @@ public class TeleportaRelay {
             return;
         }
         System.setProperty("TELEPORTA_APP_JAR", jarFile.getAbsolutePath());
+
+        // if port is not set - try to get first free port
+        if (port==0) {
+            port = findFreePort();
+            // if free port not found - try default 8989
+            if (port == -1) {
+                port = 8989;
+            }
+        }
 
         final HttpServer server = HttpServer.create(new InetSocketAddress(port), 50);
         final TeleCrypt tc = new TeleCrypt();
@@ -528,7 +541,7 @@ public class TeleportaRelay {
                     if (fileCounter > MAX_FILES_TO_LIST) {
                         break;
                     }
-                    if (!e.toString().endsWith(".dat")) {
+                    if (!e.toString().endsWith(EXT_FILE)) {
                         continue;
                     }
                     if (sb.length() > 0) {
@@ -586,21 +599,35 @@ public class TeleportaRelay {
             // try to create it if it's not exist
             checkCreateFolder(toFolder);
             // create temp file on relay side
-            final File out = new File(toFolder, generateUniqueID() + ".dat");
+            final File out = new File(toFolder, generateUniqueID() + EXT_UPLOAD);
             final byte[] buffer = new byte[4096];
             // transfer file
             try (InputStream in = httpExchange.getRequestBody();
                  FileOutputStream fout = new FileOutputStream(out)) {
                 for (int n = in.read(buffer); n >= 0; n = in.read(buffer))
                     fout.write(buffer, 0, n);
+
+                // build target file, but with .DAT extension
+                final File dat_out = new File(out.getParentFile(),out.getName().substring(0,EXT_UPLOAD.length())+EXT_FILE);
+                if (dat_out.exists() && !dat_out.delete()) {
+                    LOG.warning(TeleportaError.messageFor(0x6107,
+                            dat_out.getAbsolutePath()));
+                }
+                // now move from .upload to .dat
+                // note: this required to forbid cases when non-completed uploads will be fetched from client side
+                if (!out.renameTo(dat_out)) {
+                    LOG.warning(TeleportaError.messageFor(0x6115,
+                            dat_out.getAbsolutePath()));
+                }
                 if (LOG.isLoggable(Level.FINE)) {
                     LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileUploaded",
-                            out.getAbsolutePath()));
+                            dat_out.getAbsolutePath()));
                 }
                 //  respond 200 OK with no data
                 httpExchange.sendResponseHeaders(200, 0);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
+                // delete uncompleted upload on error
                 try {
                     if (!out.delete()) {
                         LOG.warning(TeleportaError.messageFor(0x6107,
@@ -787,7 +814,7 @@ public class TeleportaRelay {
                 LOG.fine(TeleportaSysMessage.of("teleporta.system.message.toFile", to, fileId));
             }
             final File toFolder = new File(rc.storageDir, to),
-                    rFile = new File(toFolder, fileId + ".dat");
+                    rFile = new File(toFolder, fileId + EXT_FILE);
 
             if (!rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
                 // stored file not found
@@ -998,7 +1025,7 @@ public class TeleportaRelay {
                         break;
                     }
                     // ignore files not related to Teleporta
-                    if (!e.toString().toLowerCase().endsWith(".dat")) {
+                    if (!e.toString().toLowerCase().endsWith(EXT_FILE)) {
                         continue;
                     }
                     final File f = e.toFile();

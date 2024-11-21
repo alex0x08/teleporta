@@ -326,16 +326,17 @@ public class EmbeddedClient extends AbstractClient {
         checkCreateFolder(toFolder);
         // create temp file on relay side
         final File out = new File(toFolder, generateUniqueID() + ".dat");
-        // note: if file is directory - we create temp archive and then
-        // encrypt & send it instead of each file in folder
-        final File packedF = file.isDirectory() ? packFolder(file) : null;
-        try (ZipOutputStream zout = new ZipOutputStream(Files.newOutputStream(out.toPath()));
-             //read packed folder instead of file
-            FileInputStream in = new FileInputStream(packedF != null ? packedF : file)) {
+        try (ZipOutputStream zout = new ZipOutputStream(Files.newOutputStream(out.toPath()));) {
             zout.putNextEntry(new ZipEntry("meta.properties"));
             props.store(zout, "");
             zout.putNextEntry(new ZipEntry("file.content"));
-            tc.encryptData(key, in, zout);
+            if (file.isDirectory()) {
+                tc.encryptFolder(key,file,zout);
+            } else {
+                try (FileInputStream in = new FileInputStream(file)){
+                    tc.encryptData(key, in, zout);
+                }
+            }
             zout.closeEntry();
             zout.flush();
             if (LOG.isLoggable(Level.FINE)) {
@@ -348,10 +349,10 @@ public class EmbeddedClient extends AbstractClient {
             } else if (file.isDirectory()) {
                 deleteRecursive(file, true);
             }
-            if (packedF != null && !packedF.delete()) {
+            /*if (packedF != null && !packedF.delete()) {
                 LOG.warning(TeleportaError.messageFor(0x6107,
                         packedF.getAbsolutePath()));
-            }
+            }*/
         }
     }
     /**
@@ -425,22 +426,10 @@ public class EmbeddedClient extends AbstractClient {
                     switch (type) {
                         // if its folder
                         case "folder": {
-                            // note on extension
-                            final File outz = new File(f, name +  TeleportaCommons.FOLDERZIP_EXT);
-                            // decrypt data
-                            try (FileOutputStream fout = new FileOutputStream(outz)) {
-                                tc.decryptData(rkey, zin, fout);
-                            }
-                            // if successful - unpack it
-                            if (outz.length() > 0) {
-                                unpackFolder(outz);
-                            }
-                            // now remove temp file (archive itself)
-                            if (!outz.delete()) {
-                                // Cannot delete temp file
-                                LOG.warning(TeleportaError.messageFor(0x6107,
-                                        outz.getAbsolutePath()));
-                            }
+
+                            final File outz = new File(f, name );
+                            tc.decryptFolder(rkey, zin, outz);
+
                             break;
                         }
                         // if content is file

@@ -72,9 +72,9 @@ public class TeleportaClient extends AbstractClient{
     public static void main(String[] args) throws Exception {
         setLogging(true);
         //  System.setProperty("relayKey","/opt/work/tmp/tele.pub");
-        System.setProperty("useLockFile", "true");
+        //System.setProperty("useLockFile", "true");
         System.setProperty("dumbWatcher", "true");
-        System.setProperty("allowOutgoing","false");
+      //  System.setProperty("allowOutgoing","false");
         init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa", true,false);
     }
     /**
@@ -490,16 +490,18 @@ public class TeleportaClient extends AbstractClient{
             // Error creating session key
             throw TeleportaError.withError(0x7213,e);
         }
-        // note: if file is directory - we create temp archive and then
-        // encrypt & send it instead of each file in folder
-        final File packedF = file.isDirectory() ? packFolder(file) : null;
-        try (ZipOutputStream zout = new ZipOutputStream(http.getOutputStream());
-             //read packed folder instead of file
-             FileInputStream in = new FileInputStream(packedF != null ? packedF : file)) {
+        try (ZipOutputStream zout = new ZipOutputStream(http.getOutputStream());) {
             zout.putNextEntry(new ZipEntry("meta.properties"));
             props.store(zout, "");
             zout.putNextEntry(new ZipEntry("file.content"));
-            tc.encryptData(key, in, zout);
+            // stream directory right into network stream!
+            if (file.isDirectory()) {
+                tc.encryptFolder(key,file,zout);
+            } else {
+                try (FileInputStream in = new FileInputStream(file)){
+                    tc.encryptData(key, in, zout);
+                }
+            }
             zout.closeEntry();
             zout.flush();
 
@@ -520,10 +522,10 @@ public class TeleportaClient extends AbstractClient{
             } else if (file.isDirectory()) {
                 deleteRecursive(file, true);
             }
-            if (packedF != null && !packedF.delete()) {
+            /*if (packedF != null && !packedF.delete()) {
                 LOG.warning(TeleportaError.messageFor(0x6107,
                         packedF.getAbsolutePath()));
-            }
+            }*/
         }
         http.disconnect();
     }
@@ -644,21 +646,8 @@ public class TeleportaClient extends AbstractClient{
                         // if its folder
                         case "folder": {
                             // note on extension
-                            final File outz = new File(f, name +  TeleportaCommons.FOLDERZIP_EXT);
-                            // decrypt data
-                            try (FileOutputStream fout = new FileOutputStream(outz)) {
-                                tc.decryptData(rkey, zin, fout);
-                            }
-                            // if successful - unpack it
-                            if (outz.length() > 0) {
-                                unpackFolder(outz);
-                            }
-                            // now remove temp file (archive itself)
-                            if (!outz.delete()) {
-                                // Cannot delete temp file
-                                LOG.warning(TeleportaError.messageFor(0x6107,
-                                        outz.getAbsolutePath()));
-                            }
+                            final File outz = new File(f, name );
+                            tc.decryptFolder(rkey, zin, outz);
                             break;
                         }
                         // if content is file
@@ -822,9 +811,9 @@ public class TeleportaClient extends AbstractClient{
                 for (Path e : dirStream) {
                     final File ff = e.toFile();
                     // ignore packed folders, caught in process
-                    if (ff.getName().endsWith( TeleportaCommons.FOLDERZIP_EXT)) {
+                    /*if (ff.getName().endsWith( TeleportaCommons.FOLDERZIP_EXT)) {
                         continue;
-                    }
+                    }*/
                     if (!isAcceptable(ff)) {
                         // ignore non-existent or non-readable
                         // ( possibly deleted before trigger happens )
