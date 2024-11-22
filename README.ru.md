@@ -1,3 +1,5 @@
+[![en](https://img.shields.io/badge/lang-ru-red.svg)](https://github.com/alex0x08/teleporta/blob/main/README.md)
+
 # Телепорта
 Телепортируем файлы с 2015го года. Публичная версия.
 
