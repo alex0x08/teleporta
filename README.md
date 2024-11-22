@@ -1,9 +1,9 @@
+[![ru](https://img.shields.io/badge/lang-ru-red.svg)](https://github.com/alex0x08/teleporta/blob/master/README.ru.md)
+
 # Teleporta
 Teleporting files from Bob to Alice since 2015. Community edition.
 
 This is our internal tool, dedicated to fast and secure file exchange within a team.
-
-[Описание на русском](https://github.com/alex0x08/teleporta/blob/README_ru.md)
 
 An article with detailed project description could be found here (in Russian): [https://blog.0x08.ru/teleporta](https://blog.0x08.ru/teleporta)
 
