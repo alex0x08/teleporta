@@ -44,7 +44,8 @@ public class TeleportaClient extends AbstractClient{
     private TeleClipboard clip;
     private final ClientRuntimeContext ctx;
     private boolean pollRunning,  // if poll enabled and running
-            networkError; // if network error raised
+            networkError, // if network error raised
+            requireResend;
     final TeleFilesWatch watch;
 
     public TeleportaClient(ClientRuntimeContext ctx) throws NoSuchAlgorithmException {
@@ -178,6 +179,7 @@ public class TeleportaClient extends AbstractClient{
                             try {
                                 c.sendFile(f, id);
                             } catch (IOException e) {
+                                c.requireResend = true;
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }
                         });
@@ -207,6 +209,12 @@ public class TeleportaClient extends AbstractClient{
                 if (c.networkError) {
                     c.networkError = false; // first successful request turns this switch off
                 }
+
+                if (c.requireResend) {
+                    c.requireResend = false;
+                    c.sendAllNotDelivered(outputDir,ctx.useLockFile);
+                }
+
                 // if there are pending files - try to download them
                 if (files != null) {
                     if (LOG.isLoggable(Level.FINE)) {
@@ -231,6 +239,7 @@ public class TeleportaClient extends AbstractClient{
                 } else {
                     // put 'network error' mark on any exception
                     c.networkError = true;
+                    c.requireResend = true;
                 }
                 if (LOG.isLoggable(Level.FINE)) {
                     LOG.log(Level.FINE, e.getMessage(), e);
@@ -461,6 +470,9 @@ public class TeleportaClient extends AbstractClient{
         if (networkError) {
             return;
         }
+        if (ctx.processingFiles.contains(file.getAbsolutePath())) {
+            return;
+        }
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendingFile", file.getAbsolutePath()));
         }
@@ -479,18 +491,14 @@ public class TeleportaClient extends AbstractClient{
         props.setProperty("from", ctx.sessionId);
         props.setProperty("type", file.isDirectory() ? "folder" : "file");
         final SecretKey key;
-        try {
+        try (ZipOutputStream zout = new ZipOutputStream(http.getOutputStream());) {
+            ctx.processingFiles.add(file.getAbsolutePath());
             key = tc.generateFileKey(); // generate session key (AES)
             final TeleportaCommons.RegisteredPortal p = ctx.portals.get(receiverId);
             final byte[] foreignPk = fromHex(p.publicKey);
             final PublicKey pk = tc.restorePublicKey(foreignPk);
             final byte[] enc = tc.encryptKey(key.getEncoded(), pk);
             props.setProperty("fileKey", toHex(enc, 0, 0));
-        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
-            // Error creating session key
-            throw TeleportaError.withError(0x7213,e);
-        }
-        try (ZipOutputStream zout = new ZipOutputStream(http.getOutputStream());) {
             zout.putNextEntry(new ZipEntry("meta.properties"));
             props.store(zout, "");
             zout.putNextEntry(new ZipEntry("file.content"));
@@ -512,20 +520,20 @@ public class TeleportaClient extends AbstractClient{
                 http.disconnect();
                 return;
             }
-            if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileSent", file.getAbsolutePath()));
-            }
-        } finally {
             if (file.isFile() && !file.delete()) {
                 LOG.warning(TeleportaError.messageFor(0x6106,
                         file.getAbsolutePath()));
             } else if (file.isDirectory()) {
                 deleteRecursive(file, true);
             }
-            /*if (packedF != null && !packedF.delete()) {
-                LOG.warning(TeleportaError.messageFor(0x6107,
-                        packedF.getAbsolutePath()));
-            }*/
+            if (LOG.isLoggable(Level.FINE)) {
+                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileSent", file.getAbsolutePath()));
+            }
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+            // Error creating session key
+            throw TeleportaError.withError(0x7213,e);
+        } finally {
+            ctx.processingFiles.remove(file.getAbsolutePath());
         }
         http.disconnect();
     }
@@ -810,10 +818,6 @@ public class TeleportaClient extends AbstractClient{
             try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(f.toPath())) {
                 for (Path e : dirStream) {
                     final File ff = e.toFile();
-                    // ignore packed folders, caught in process
-                    /*if (ff.getName().endsWith( TeleportaCommons.FOLDERZIP_EXT)) {
-                        continue;
-                    }*/
                     if (!isAcceptable(ff)) {
                         // ignore non-existent or non-readable
                         // ( possibly deleted before trigger happens )
@@ -849,7 +853,7 @@ public class TeleportaClient extends AbstractClient{
         private final Map<String, TeleportaCommons.RegisteredPortal> portals = new LinkedHashMap<>();
         private final Map<String, String> portalNames = new LinkedHashMap<>();
         KeyPair keyPair; // portal public&private keys
-
+        final Set<String> processingFiles = new HashSet<>();
         ClientRuntimeContext(URL relayUrl, File storageDir,
                              boolean allowClipboard,boolean allowOutgoing, boolean useLockFile) {
             this.storageDir = storageDir;

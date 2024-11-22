@@ -33,6 +33,7 @@ public abstract class AbstractClient {
      *          path to Teleporta's home
      */
     protected static void createDesktopLink(File teleportaHome) {
+        // don't try in headless mode, means that we're on server
         if (GraphicsEnvironment.isHeadless()) {
             return;
         }

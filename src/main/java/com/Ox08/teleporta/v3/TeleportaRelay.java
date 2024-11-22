@@ -104,9 +104,10 @@ public class TeleportaRelay {
                 port = 8989;
             }
         }
-
+        // create server
         final HttpServer server = HttpServer.create(new InetSocketAddress(port), 50);
         final TeleCrypt tc = new TeleCrypt();
+        // generate relay key pair
         final KeyPair rkp = tc.generateKeys();
         final boolean privateRelay =
                 Boolean.parseBoolean(System.getProperty("privateRelay", "false"));

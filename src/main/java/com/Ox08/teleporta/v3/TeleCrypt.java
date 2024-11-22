@@ -208,8 +208,8 @@ public class TeleCrypt {
             // store IV directly in file as first 16 bytes
             final byte[] iv = cipher.getIV();
             outputStream.write(iv);
+            // don't close !
             final ZipOutputStream zos = new ZipOutputStream(cipherOut);
-
             final Path pp = folder.toPath();
             try (Stream<Path> entries = Files.walk(pp)
                     .filter(path -> !Files.isDirectory(path))) {
@@ -231,7 +231,7 @@ public class TeleCrypt {
                     }
                 });
             }
-
+            // this is required to being called manually
             cipherOut.doFinal();
         } catch (IOException | InvalidAlgorithmParameterException
                  | InvalidKeyException | NoSuchAlgorithmException
@@ -324,7 +324,7 @@ public class TeleCrypt {
     }
 
     /**
-     * copied from javax.crypto.CipherOutputStream with some changes
+     * Taken from javax.crypto.CipherOutputStream with removed close() logic
      */
     public static class NonclosableCipherOutputStream extends FilterOutputStream {
         private final Cipher cipher;
