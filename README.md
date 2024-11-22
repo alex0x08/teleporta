@@ -1,4 +1,5 @@
-[![ru](https://img.shields.io/badge/lang-ru-red.svg)](https://github.com/alex0x08/teleporta/blob/master/README.ru.md)
+[![ru](https://img.shields.io/badge/lang-ru-red.svg)](https://github.com/alex0x08/teleporta/blob/main/README.ru.md)
+
 
 # Teleporta
 Teleporting files from Bob to Alice since 2015. Community edition.
