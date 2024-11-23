@@ -2,11 +2,12 @@
 
 
 # Teleporta
-Teleporting files from Bob to Alice since 2015. Community edition.
+Teleporting files from 'Bob' to 'Alice' since 2015. Community version.
 
-This is our internal tool, dedicated to fast and secure file exchange within a team.
+No UI, no passwords, no keys - just drag&drop to local folders. Works everywhere.
 
-An article with detailed project description could be found here (in Russian): [https://blog.0x08.ru/teleporta](https://blog.0x08.ru/teleporta)
+This is our internal tool, dedicated to fast and secure file exchange between team members.
+Could be used in public networks.
 
 In action:
 ![In short](https://github.com/alex0x08/teleporta/blob/main/images/316/teleporta-demo.gif?raw=true)
@@ -138,19 +139,21 @@ Use a template for portal name:
 ```
 Keywords USERNAME and HOSTNAME will be substituted by actual username and hostname, then the final string will be used as portal name.
 
-Display startup logo:
+Do not show logo on start:
 ```
 -DshowLogo=false
 ```
-Custom MOTD (Message of the day), that displayed when portal connects:
+Custom MOTD (Message of the day), displayed when portal connects:
 ```
 -Dmotd="This is my awesome relay!"
 ```
 
-Create link on Desktop to Teleporta's folders:  
+Don't create link on user desktop to Teleporta's folders:  
 ```
 -DcreateDesktopLink=false
 ```
+This is not used at all on headless environments.
+
 Specify custom storage path:
 ```
 -DappHome=/full/path/to/folder
