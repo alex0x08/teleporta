@@ -249,8 +249,14 @@ public class TeleportaCommons {
         }
     }
 
+    /**
+     * Check if app is running on Windows
+     * @return
+     *      true - if this is Windows OS, false otherwise
+     */
     public static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase().startsWith("windows");
+        return System.getProperty("os.name", "")
+                .toLowerCase().startsWith("windows");
     }
 
     /**

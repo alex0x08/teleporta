@@ -14,7 +14,6 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
@@ -123,9 +122,14 @@ public class TeleportaClient extends AbstractClient{
         if (createDesktopLink ) {
            createDesktopLink(teleportaHome);
         }
+        final boolean respondVersion =
+                Boolean.parseBoolean(System.getProperty("respondVersion", "true"));
         // build teleporta client context
         final ClientRuntimeContext ctx = new ClientRuntimeContext(new URL(relayUrl),
-                teleportaHome, allowClipboard,allowOutgoing,useLockFile);
+                teleportaHome,
+                allowClipboard,
+                allowOutgoing,
+                useLockFile,respondVersion);
         // build client
         final TeleportaClient c = new TeleportaClient(ctx);
         // register on relay
@@ -268,6 +272,7 @@ public class TeleportaClient extends AbstractClient{
         final URLConnection con = u.openConnection();
         // no need to check class, there always will be just HttpURLConnection
         final HttpURLConnection http = (HttpURLConnection) con;
+        setVersion(con,ctx);
         int code = http.getResponseCode();
         if (code != HttpURLConnection.HTTP_OK) {
             if (code == HttpURLConnection.HTTP_FORBIDDEN) {
@@ -385,6 +390,7 @@ public class TeleportaClient extends AbstractClient{
                 System.currentTimeMillis()));
         final URLConnection con = u.openConnection();
         final HttpURLConnection http = (HttpURLConnection) con;
+        setVersion(con,ctx);
         final int code = http.getResponseCode();
         if (code != HttpURLConnection.HTTP_OK) {
             // incorrect relay response
@@ -427,6 +433,7 @@ public class TeleportaClient extends AbstractClient{
                 ctx.sessionId));
         final URLConnection con = u.openConnection();
         final HttpURLConnection http = (HttpURLConnection) con;
+        setVersion(con,ctx);
         http.setRequestMethod("POST");
         http.setDoOutput(true);
         final SecretKey key;
@@ -443,7 +450,6 @@ public class TeleportaClient extends AbstractClient{
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             // Error encrypting clipboard data
             throw TeleportaError.withError(0x7214,e);
-
         }
         // MUST be called, otherwise request will not be executed!
         int code = http.getResponseCode();
@@ -483,6 +489,7 @@ public class TeleportaClient extends AbstractClient{
                 ctx.sessionId, receiverId));
         final URLConnection con = u.openConnection();
         final HttpURLConnection http = (HttpURLConnection) con;
+        setVersion(con,ctx);
         http.setRequestMethod("POST");
         http.setDoOutput(true);
         // build metadata
@@ -554,6 +561,7 @@ public class TeleportaClient extends AbstractClient{
                 ctx.sessionId));
         final URLConnection con = u.openConnection();
         final HttpURLConnection http = (HttpURLConnection) con;
+        setVersion(con,ctx);
         int code = http.getResponseCode(); // execute request
         if (code != HttpURLConnection.HTTP_OK) {
             LOG.warning(TeleportaError.messageFor(0x7002, code));
@@ -593,6 +601,7 @@ public class TeleportaClient extends AbstractClient{
                 ctx.sessionId, fileId));
         final URLConnection con = u.openConnection();
         final HttpURLConnection http = (HttpURLConnection) con;
+        setVersion(con,ctx);
         int code = http.getResponseCode();
         // check for basic HTTP codes first
         if (code != HttpURLConnection.HTTP_OK) {
@@ -693,6 +702,7 @@ public class TeleportaClient extends AbstractClient{
         final URLConnection con = u.openConnection();
         final HttpURLConnection http = (HttpURLConnection) con;
         http.setRequestMethod("POST");
+        setVersion(con,ctx);
         http.setDoOutput(true);
 
         // build request to relay (yep, it's based on java.util.Properties)
@@ -703,7 +713,6 @@ public class TeleportaClient extends AbstractClient{
 
         boolean privateRelay = false;
         final String relayKey;
-
         /*
             Check for relay public key.
             If its exists - we try to use it during registration process.
@@ -833,34 +842,6 @@ public class TeleportaClient extends AbstractClient{
             } catch (IOException e) {
                 LOG.warning(TeleportaError.messageFor(0x7006,e));
             }
-        }
-    }
-
-
-
-
-    /**
-     * Teleporta Client's execution context
-     */
-    public static class ClientRuntimeContext {
-        final File storageDir; // selected storage dir
-        final URL relayUrl; // current relay url
-        final boolean allowClipboard, // is clipboard allowed?
-                      allowOutgoing,  // if true - we allow outgoing files from this portal
-                      useLockFile;
-        private String sessionId, // a session id, generated by relay and used as authentication
-                relayPublicKey;  // relay's public key
-        private final Map<String, TeleportaCommons.RegisteredPortal> portals = new LinkedHashMap<>();
-        private final Map<String, String> portalNames = new LinkedHashMap<>();
-        KeyPair keyPair; // portal public&private keys
-        final Set<String> processingFiles = new HashSet<>();
-        ClientRuntimeContext(URL relayUrl, File storageDir,
-                             boolean allowClipboard,boolean allowOutgoing, boolean useLockFile) {
-            this.storageDir = storageDir;
-            this.relayUrl = relayUrl;
-            this.allowClipboard = allowClipboard;
-            this.allowOutgoing = allowOutgoing;
-            this.useLockFile = useLockFile;
         }
     }
 

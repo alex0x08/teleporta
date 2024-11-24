@@ -116,9 +116,11 @@ public class TeleportaRelay {
             TeleportaSysMessage.println("teleporta.system.message.relayKey");
             printRelayKey(rkp.getPublic().getEncoded());
         }
+        final boolean respondVersion =
+                Boolean.parseBoolean(System.getProperty("respondVersion", "true"));
         // build runtime context for relay itself
         final RelayRuntimeContext rc = new RelayRuntimeContext(teleportaHome,
-                rkp, privateRelay,allowClipboard);
+                rkp, privateRelay,allowClipboard,respondVersion);
         final EmbeddedClient ec;
         // check if 'embedded' portal is enabled 
         if (relayHasPortal) {
@@ -177,7 +179,7 @@ public class TeleportaRelay {
             LOG.fine(TeleportaSysMessage
                     .of("teleporta.system.message.selfDownloadsAllowed"));
             server.createContext("/" + seed)
-                    .setHandler(new RespondSelfHandler());
+                    .setHandler(new RespondSelfHandler(rc));
         }
         final String sb = TeleportaSysMessage.of(rc.privateRelay ?
                 "teleporta.system.message.teleportaRelayPrivate" :
@@ -211,23 +213,27 @@ public class TeleportaRelay {
         final Map<String, String> portalNames = new LinkedHashMap<>(); // all registered portals names
         final KeyPair relayPair; // relay keys
         final boolean privateRelay, // if true - we operate in 'private relay' mode
-                allowClipboardTransfer; // if true - we allow clipboard transfers
+                allowClipboardTransfer, // if true - we allow clipboard transfers
+                respondVersion;
         File currentCbFile; // current clipboard data
         RelayRuntimeContext(File storageDir, KeyPair kp,
-                            boolean privateRelay,boolean allowClipboardTransfer) {
+                            boolean privateRelay,boolean allowClipboardTransfer,boolean respondVersion) {
             this.storageDir = storageDir;
             this.relayPair = kp;
             this.privateRelay = privateRelay;
             this.allowClipboardTransfer = allowClipboardTransfer;
+            this.respondVersion = respondVersion;
         }
     }
     /**
      * This handler allows to download Teleporta distribution, generated from runtime.
      */
     static class RespondSelfHandler extends AbstractHandler {
+        RespondSelfHandler(RelayRuntimeContext ctx) { super(ctx);}
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
             final Map<String, String> params = getQueryParams(httpExchange.getRequestURI());
+            setVersionHeader(httpExchange);
             final String dl = params.isEmpty() ? null : params.get("dl");
             // if there is no 'dl' parameter - respond static html file
             if (dl == null) {
@@ -306,12 +312,12 @@ public class TeleportaRelay {
      * A handler to respond registered portals
      */
     static class GetPortalsHandler extends AbstractHandler {
-        private final RelayRuntimeContext rc;
         GetPortalsHandler(RelayRuntimeContext rc) {
-            this.rc = rc;
+           super(rc);
         }
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
+            setVersionHeader(httpExchange);
             final Map<String, String> params = getQueryParams(httpExchange.getRequestURI());
             if (params.isEmpty()) {
                 respondAndClose(400, httpExchange);
@@ -356,12 +362,11 @@ public class TeleportaRelay {
      * A handler to register/refresh portal
      */
     static class RegisterHandler extends AbstractHandler {
-        private final RelayRuntimeContext rc;
         // if true - we allow to replace registered portals
         private final boolean allowPortalNamesUpdate; 
         private final String motd;
         RegisterHandler(RelayRuntimeContext rc) {
-            this.rc = rc;
+            super(rc);
             allowPortalNamesUpdate = Boolean.parseBoolean(
                     System.getProperty("allowPortalNameUpdate", "false"));
             // build relay's MOTD (welcome message)
@@ -376,6 +381,7 @@ public class TeleportaRelay {
         }
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
+            setVersionHeader(httpExchange);
             if (checkIfNonPostRequest(httpExchange))
                 return;
             // check for limit of registered portals - to avoid DDOS
@@ -497,12 +503,12 @@ public class TeleportaRelay {
      * A handler to respond list of files, awaiting download
      */
     static class FilePendingDownloadsHandler extends AbstractHandler {
-        private final RelayRuntimeContext rc;
         FilePendingDownloadsHandler(RelayRuntimeContext rc) {
-            this.rc = rc;
+            super(rc);
         }
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
+            setVersionHeader(httpExchange);
             final Map<String, String> params = getQueryParams(httpExchange.getRequestURI());
             if (params.isEmpty()) {
                 respondAndClose(400, httpExchange);
@@ -573,12 +579,12 @@ public class TeleportaRelay {
      * A handler to upload new file to relay
      */
     static class FileUploadHandler extends AbstractHandler {
-        private final RelayRuntimeContext rc;
         FileUploadHandler(RelayRuntimeContext rc) {
-            this.rc = rc;
+            super(rc);
         }
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
+            setVersionHeader(httpExchange);
             // allow only POST requests here
             if (checkIfNonPostRequest(httpExchange))
                 return;
@@ -646,12 +652,12 @@ public class TeleportaRelay {
      * Handler to upload new clipboard content
      */
     static class ClipboardUploadHandler extends AbstractHandler {
-        private final RelayRuntimeContext rc;
         ClipboardUploadHandler(RelayRuntimeContext rc) {
-            this.rc = rc;
+            super(rc);
         }
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
+            setVersionHeader(httpExchange);
             if (checkIfNonPostRequest(httpExchange))
                 return;
             final Map<String, String> params = getQueryParams(httpExchange.getRequestURI());
@@ -720,19 +726,18 @@ public class TeleportaRelay {
      * Handler to download updated clipboard contents
      */
     static class ClipboardDownloadHandler extends AbstractHandler {
-        private final RelayRuntimeContext rc;
         ClipboardDownloadHandler(RelayRuntimeContext rc) {
-            this.rc = rc;
+           super(rc);
         }
 
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
+            setVersionHeader(httpExchange);
             final Map<String, String> params = getQueryParams(httpExchange.getRequestURI());
             if (params.isEmpty()) {
                 respondAndClose(400, httpExchange);
                 return;
             }
-
             final String to = params.get("to"); // target portal's id
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(TeleportaSysMessage.of("teleporta.system.message.to", to));
@@ -798,12 +803,12 @@ public class TeleportaRelay {
      * Handle files downloads
      */
     static class FileDownloadHandler extends AbstractHandler {
-        private final RelayRuntimeContext rc;
         FileDownloadHandler(RelayRuntimeContext rc) {
-            this.rc = rc;
+           super(rc);
         }
         @Override
         public void handle(HttpExchange httpExchange) throws IOException {
+            setVersionHeader(httpExchange);
             final Map<String, String> params = getQueryParams(httpExchange.getRequestURI());
             if (params.isEmpty()) {
                 respondAndClose(400, httpExchange);
@@ -853,6 +858,9 @@ public class TeleportaRelay {
      */
     abstract static class AbstractHandler implements HttpHandler {
         protected final TeleCrypt tc = new TeleCrypt();
+        protected final RelayRuntimeContext rc;
+
+        AbstractHandler(RelayRuntimeContext rc) { this.rc = rc;}
         /**
          * Extract query params from URL
          *
@@ -900,6 +908,12 @@ public class TeleportaRelay {
             respondAndClose(400, exchange);
             return true;
         }
+
+        protected void setVersionHeader(HttpExchange exchange) {
+                exchange.getResponseHeaders().set("Server", "Teleporta Relay/" +
+                        (rc.respondVersion ? SystemInfo.SI.getBuildVersion() : "Unknown"));
+        }
+
         /**
          * Respond unencrypted properties to http stream
          *

@@ -26,6 +26,7 @@ import static com.Ox08.teleporta.v3.TeleportaCommons.*;
 import static com.Ox08.teleporta.v3.TeleportaRelay.MAX_FILES_TO_LIST;
 /**
  * This is embedded client, used when Relay also act as portal
+ * Note: there is no networking.
  * @since 3.1.5
  * @author 0x08
  */
@@ -132,7 +133,9 @@ public class EmbeddedClient extends AbstractClient {
                 final String[] files = getPending();
                 if (files != null) {
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.foundPendingFiles", files.length));
+                        LOG.fine(TeleportaSysMessage
+                                .of("teleporta.system.message.foundPendingFiles",
+                                files.length));
                     }
                     // there could be only few files always, no need for dir streaming
                     for (String file : files) {
@@ -244,7 +247,8 @@ public class EmbeddedClient extends AbstractClient {
      */
     public void sendClipboard(String data) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendingClipboard", data.length()));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendingClipboard",
+                    data.length()));
         }
         if (ctx.relayCtx.currentCbFile!=null && !ctx.relayCtx.currentCbFile.delete()) {
                 // cannot delete file
@@ -290,7 +294,8 @@ public class EmbeddedClient extends AbstractClient {
             throw TeleportaError.withError(0x7214, e);
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardSent", data.length()));
+            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardSent",
+                    data.length()));
         }
     }
     /**
@@ -340,7 +345,8 @@ public class EmbeddedClient extends AbstractClient {
             zout.closeEntry();
             zout.flush();
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileSent", file.getAbsolutePath()));
+                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileSent",
+                        file.getAbsolutePath()));
             }
         } finally {
             if (file.isFile() && !file.delete()) {
