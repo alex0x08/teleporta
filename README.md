@@ -9,6 +9,9 @@ No UI, no passwords, no keys - just drag&drop to local folders. Works everywhere
 This is our internal tool, dedicated to fast and secure file exchange between team members.
 Could be used in public networks.
 
+[Feature plan for 2025](https://docs.google.com/spreadsheets/d/1G5hc_vl9MaJFP2rhF3_pZM2uZejiHG0KswkvXgyJyB8/edit?usp=sharing)
+
+
 In action:
 ![In short](https://github.com/alex0x08/teleporta/blob/main/images/316/teleporta-demo.gif?raw=true)
 Clipboard transfer:
