@@ -24,7 +24,7 @@ import java.util.zip.ZipOutputStream;
  * @since 1.0
  */
 public class TeleCrypt {
-    public static final int SESSION_KEY_LEN = 256;
+    public static final int SESSION_KEY_LEN = 256,IV_LEN = 16;
 
     public static final String SESSION_CYPHER= "AES/CBC/PKCS5Padding",
             PK_CYPHER = "RSA";
@@ -98,9 +98,9 @@ public class TeleCrypt {
     public void decryptData(SecretKey key,
                             InputStream inputStream, OutputStream outputStream) {
         try {
-            final byte[] fileIv = new byte[16];
+            final byte[] fileIv = new byte[IV_LEN];
             // read stored IV
-            if (inputStream.read(fileIv)!=16) {
+            if (inputStream.read(fileIv)!=IV_LEN) {
                 // incorrect IV size
                 throw TeleportaError.withError(0x7012);
             }
@@ -125,9 +125,9 @@ public class TeleCrypt {
     public void decryptFolder(SecretKey key,
                             InputStream inputStream, File zipFolder) {
         try {
-            final byte[] fileIv = new byte[16];
+            final byte[] fileIv = new byte[IV_LEN];
             // read stored IV
-            if (inputStream.read(fileIv)!=16) {
+            if (inputStream.read(fileIv)!=IV_LEN) {
                 // incorrect IV size
                 throw TeleportaError.withError(0x7012);
             }
@@ -258,9 +258,9 @@ public class TeleCrypt {
     public void rencryptData(SecretKey key, SecretKey key2,
                              InputStream inputStream, OutputStream outputStream) {
         try {
-            final byte[] fileIv = new byte[16];
+            final byte[] fileIv = new byte[IV_LEN];
             // read stored IV
-            if (inputStream.read(fileIv)!=16) {
+            if (inputStream.read(fileIv)!=IV_LEN) {
                 // incorrect IV size
                 throw TeleportaError.withError(0x7012);
             }
@@ -318,7 +318,7 @@ public class TeleCrypt {
      *          an IvParameter filed by random data
      */
     public IvParameterSpec generateIv() {
-        final byte[] iv = new byte[16];
+        final byte[] iv = new byte[IV_LEN];
         new SecureRandom().nextBytes(iv);
         return new IvParameterSpec(iv);
     }

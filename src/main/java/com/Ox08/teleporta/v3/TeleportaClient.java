@@ -1,7 +1,7 @@
 package com.Ox08.teleporta.v3;
 
 import com.Ox08.teleporta.v3.messages.TeleportaError;
-import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
+import com.Ox08.teleporta.v3.messages.TeleportaMessage;
 import com.Ox08.teleporta.v3.services.TeleClipboard;
 import com.Ox08.teleporta.v3.services.TeleFilesWatch;
 
@@ -75,7 +75,8 @@ public class TeleportaClient extends AbstractClient{
         //System.setProperty("useLockFile", "true");
         System.setProperty("dumbWatcher", "true");
       //  System.setProperty("allowOutgoing","false");
-        init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa", true,false);
+        init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa",
+                true,false);
     }
     /**
      * Main function, that starts Teleporta client
@@ -139,7 +140,7 @@ public class TeleportaClient extends AbstractClient{
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage
+            LOG.fine(TeleportaMessage
                     .of("teleporta.system.message.portalRegistered", ctx.sessionId));
         }
         // load portals list, don't touch watches initially, because output folder should be empty
@@ -222,7 +223,7 @@ public class TeleportaClient extends AbstractClient{
                 // if there are pending files - try to download them
                 if (files != null) {
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(TeleportaSysMessage
+                        LOG.fine(TeleportaMessage
                                 .of("teleporta.system.message.foundPendingFiles", files.length));
                     }
                     // there could be only *few* files always, no need for dir streaming
@@ -287,6 +288,11 @@ public class TeleportaClient extends AbstractClient{
         final Properties props = new Properties();
         try (BufferedInputStream in = new BufferedInputStream(http.getInputStream(), 512);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
+            // check for packet header
+            if (!checkPacketHeader(in,true)) {
+                http.disconnect();
+                return null;
+            }
             // note: this is correct case, because we don't respond at all,
             //  if there are no pending files or events
             final SecretKeySpec rkey = readSessionKey(in, true,ctx.keyPair.getPrivate());
@@ -303,12 +309,14 @@ public class TeleportaClient extends AbstractClient{
         if (props.isEmpty()) {
             return null;
         }
-        // if there is 'reload portals' mark, the client needs to re-fetch list of registered portals from relay
-        // this is used, when new portal registering and relay need to warn all other portals
+        // if there is 'reload portals' mark, the client needs to re-fetch list of registered portals
+        // from relay.
+        // this used, when new portal registers and relay need to warn all other portals
         if (props.containsKey("reloadPortals")) {
             reloadPortals(true);
         }
-        // check for 'clipboard update' mark, if it present - portal need to download updated clipboard data from relay
+        // check for 'clipboard update' mark, if presents - portal need to
+        // download updated clipboard data from relay
         if (props.containsKey("updateClipboard")) {
             downloadClipboard();
         }
@@ -329,12 +337,12 @@ public class TeleportaClient extends AbstractClient{
      */
     public void reloadPortals(boolean updateWatcher) throws IOException {
         final Properties portals = getPortals();
-        if (portals.isEmpty()) {
+        if (portals==null ||portals.isEmpty()) {
             return;
         }
         int total = Integer.parseInt(portals.getProperty("total"));
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.foundPortals", total));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.foundPortals", total));
         }
         final File outputDir = new File(ctx.storageDir, "to");
         final Set<String> prevPortals = new HashSet<>(ctx.portalNames.keySet());
@@ -357,7 +365,7 @@ public class TeleportaClient extends AbstractClient{
         }
         if (ctx.allowOutgoing && updateWatcher && !ctx.portalNames.isEmpty()) {
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.updatingFolderWatchers",
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.updatingFolderWatchers",
                         ctx.portalNames.size()));
             }
             for (String n : prevPortals) {
@@ -366,7 +374,7 @@ public class TeleportaClient extends AbstractClient{
                     watch.unregister(f.toPath());
                     deleteRecursive(f, true);
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(TeleportaSysMessage
+                        LOG.fine(TeleportaMessage
                                 .of("teleporta.system.message.removedExpiredPortal", n));
                     }
                 }
@@ -400,6 +408,11 @@ public class TeleportaClient extends AbstractClient{
         }
         try (BufferedInputStream in = new BufferedInputStream(http.getInputStream(), 512);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
+            // check for packet header
+            if (!checkPacketHeader(in,true)) {
+                http.disconnect();
+                return null;
+            }
             final SecretKeySpec rkey = readSessionKey(in, false,ctx.keyPair.getPrivate());
             if (rkey == null) {
                 http.disconnect();
@@ -423,7 +436,7 @@ public class TeleportaClient extends AbstractClient{
      */
     public void sendClipboard(String data) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage
+            LOG.fine(TeleportaMessage
                     .of("teleporta.system.message.sendingClipboard", data.length()));
         }
         final String part = decodeUrl(ctx.relayUrl, "cb-upload");
@@ -439,6 +452,7 @@ public class TeleportaClient extends AbstractClient{
         final SecretKey key;
         try (OutputStream out = http.getOutputStream();
              ByteArrayInputStream in = new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8))) {
+            out.write(TELEPORTA_PACKET_HEADER);
             key = tc.generateFileKey();
             final byte[] foreignPk = fromHex(ctx.relayPublicKey);
             final PublicKey pk = tc.restorePublicKey(foreignPk);
@@ -460,7 +474,7 @@ public class TeleportaClient extends AbstractClient{
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardSent", data.length()));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardSent", data.length()));
         }
         http.disconnect();
     }
@@ -480,7 +494,8 @@ public class TeleportaClient extends AbstractClient{
             return;
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendingFile", file.getAbsolutePath()));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.sendingFile",
+                    file.getAbsolutePath()));
         }
         final String part = decodeUrl(ctx.relayUrl, "file-upload");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?from=%s&to=%s",
@@ -498,8 +513,10 @@ public class TeleportaClient extends AbstractClient{
         props.setProperty("from", ctx.sessionId);
         props.setProperty("type", file.isDirectory() ? "folder" : "file");
         final SecretKey key;
-        try (ZipOutputStream zout = new ZipOutputStream(http.getOutputStream());) {
+        try (OutputStream out = http.getOutputStream();
+                ZipOutputStream zout = new ZipOutputStream(out)) {
             ctx.processingFiles.add(file.getAbsolutePath());
+            out.write(TELEPORTED_FILE_HEADER);
             key = tc.generateFileKey(); // generate session key (AES)
             final TeleportaCommons.RegisteredPortal p = ctx.portals.get(receiverId);
             final byte[] foreignPk = fromHex(p.publicKey);
@@ -534,7 +551,8 @@ public class TeleportaClient extends AbstractClient{
                 deleteRecursive(file, true);
             }
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileSent", file.getAbsolutePath()));
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.fileSent",
+                        file.getAbsolutePath()));
             }
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             // Error creating session key
@@ -552,7 +570,7 @@ public class TeleportaClient extends AbstractClient{
      */
     public void downloadClipboard() throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.downloadingClipboard"));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.downloadingClipboard"));
         }
         final String part = decodeUrl(ctx.relayUrl, "cb-download");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?to=%s",
@@ -570,6 +588,11 @@ public class TeleportaClient extends AbstractClient{
         }
         try (BufferedInputStream bin = new BufferedInputStream(http.getInputStream(), 4096);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
+            // check for packet header
+            if (!checkPacketHeader(bin,true)) {
+                http.disconnect();
+                return;
+            }
             final SecretKeySpec rkey = readSessionKey(bin, false,ctx.keyPair.getPrivate());
             if (rkey == null) {
                 http.disconnect();
@@ -578,7 +601,8 @@ public class TeleportaClient extends AbstractClient{
             tc.decryptData(rkey, bin, bout);
             clip.setClipboard(bout.toString("utf-8"));
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardUpdated", bout.size()));
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardUpdated",
+                        bout.size()));
             }
         }
         http.disconnect();
@@ -592,7 +616,7 @@ public class TeleportaClient extends AbstractClient{
      */
     public void downloadFile(String fileId) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.downloadingFile",fileId));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.downloadingFile",fileId));
         }
         final String part = decodeUrl(ctx.relayUrl, "file-download");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?to=%s&file=%s",
@@ -612,7 +636,9 @@ public class TeleportaClient extends AbstractClient{
         }
         final Properties props = new Properties();
         // we do unpack & decrypt on the fly, without any temp files
-        try (ZipInputStream zin = new ZipInputStream(http.getInputStream())) {
+        try (InputStream in  = http.getInputStream();
+                ZipInputStream zin = new ZipInputStream(in)) {
+            checkFileHeader(in);
             for (ZipEntry ze; (ze = zin.getNextEntry()) != null; ) {
                 if (ze.isDirectory() || ze.getName().isEmpty()) {
                     continue;
@@ -677,7 +703,7 @@ public class TeleportaClient extends AbstractClient{
                         }
                     }
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileDownloaded",
+                        LOG.fine(TeleportaMessage.of("teleporta.system.message.fileDownloaded",
                                 out.getAbsolutePath()));
                     }
                 }
@@ -736,7 +762,7 @@ public class TeleportaClient extends AbstractClient{
             relayKey = parseRelayPublicKey(Files.readAllBytes(k.toPath()));
 
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.parsedRelayKey",relayKey));
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.parsedRelayKey",relayKey));
             }
             try {
                 // decode public key
@@ -803,13 +829,13 @@ public class TeleportaClient extends AbstractClient{
             return false;
         }
         http.disconnect();
-        LOG.info(TeleportaSysMessage.of("teleporta.system.message.connectedToRelay"));
+        LOG.info(TeleportaMessage.of("teleporta.system.message.connectedToRelay"));
         return true;
     }
 
-    public void sendAllNotDelivered(File outputDir, boolean useLockFile) {
+    private void sendAllNotDelivered(File outputDir, boolean useLockFile) {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendNonDeliveredFiles"));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.sendNonDeliveredFiles"));
         }
         for (String n : ctx.portalNames.keySet()) {
             // get remote portal's id
@@ -836,7 +862,6 @@ public class TeleportaClient extends AbstractClient{
                         sendFile(ff, id);
                     } catch (IOException ee) {
                         LOG.warning(TeleportaError.messageFor(0x7006,ee));
-
                     }
                 }
             } catch (IOException e) {

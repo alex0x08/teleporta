@@ -39,7 +39,7 @@ public class SystemInfo {
     public String getBuildNum() {
         return buildNum;
     }
-    public void load() {
+    public synchronized void load() {
         if (wasLoaded) {
             throw TeleportaError.withError(0x7270);
         }

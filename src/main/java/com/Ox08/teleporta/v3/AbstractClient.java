@@ -14,10 +14,7 @@ import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.security.KeyPair;
 import java.security.PrivateKey;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -33,6 +30,10 @@ public abstract class AbstractClient {
     protected static final Logger LOG = Logger.getLogger("TC");
     protected TeleCrypt tc = new TeleCrypt(); // shared instance with cryptographic functions
                                               // it's ok, because each function is atomic
+
+    public static final byte[] TELEPORTED_FILE_HEADER = "TELEPORTEDFILE".getBytes(),
+            TELEPORTA_PACKET_HEADER = "TELEPORTAPACKET".getBytes();
+
 
     /**
      * Creates link to Teleporta's home on Desktop
@@ -106,6 +107,30 @@ public abstract class AbstractClient {
         final byte[] dec = tc.decryptKey(key, pkey);
         // try to restore it, to being used later
         return new SecretKeySpec(dec, "AES");
+    }
+
+    protected void checkFileHeader(InputStream in) throws IOException {
+        // check for file magic header
+        final byte[] head = new byte[TELEPORTED_FILE_HEADER.length];
+        if (in.read(head)!= TELEPORTED_FILE_HEADER.length||
+                !Arrays.equals(head,TELEPORTED_FILE_HEADER)) {
+            throw TeleportaError.withError(0x7018);
+        }
+    }
+
+    public static boolean checkPacketHeader(InputStream in,
+                                      boolean allowEmpty) throws IOException {
+        // check for magic header
+        final byte[] head = new byte[TELEPORTA_PACKET_HEADER.length];
+        final int c = in.read(head);
+        if (c <= 0 && allowEmpty) {
+            return false; // stop next processing
+        }
+        if (c != TELEPORTA_PACKET_HEADER.length||
+                !Arrays.equals(head,TELEPORTA_PACKET_HEADER)) {
+            throw TeleportaError.withError(0x7018);
+        }
+        return true; // process next
     }
 
     protected void setVersion(URLConnection hc,ClientRuntimeContext ctx) {
@@ -186,5 +211,4 @@ public abstract class AbstractClient {
             this.respondVersion = respondVersion;
         }
     }
-
 }

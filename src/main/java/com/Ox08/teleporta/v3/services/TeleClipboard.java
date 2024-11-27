@@ -1,6 +1,6 @@
 package com.Ox08.teleporta.v3.services;
 import com.Ox08.teleporta.v3.messages.TeleportaError;
-import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
+import com.Ox08.teleporta.v3.messages.TeleportaMessage;
 
 import java.awt.*;
 import java.awt.datatransfer.*;
@@ -24,7 +24,7 @@ public class TeleClipboard {
         handler = h;
         this.cb = Toolkit.getDefaultToolkit().getSystemClipboard();
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardEnabled"));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardEnabled"));
         }
     }
     /**
@@ -48,7 +48,7 @@ public class TeleClipboard {
     public synchronized void start() {
         cb.addFlavorListener(listener);
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardStarted"));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardStarted"));
         }
     }
     public synchronized void stop() {
@@ -80,7 +80,7 @@ public class TeleClipboard {
                         return;
                     }
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(String.format(TeleportaSysMessage.of(
+                        LOG.fine(String.format(TeleportaMessage.of(
                                 "teleporta.system.message.receivedClipboard", data.length())));
                     }
                     handler.handle(data);

@@ -6,9 +6,9 @@ package com.Ox08.teleporta.v3.messages;
  *
  * @since 3.0
  */
-public class TeleportaSysMessage extends AbstractI18nMessageStore {
+public class TeleportaMessage extends AbstractI18nMessageStore {
     // приватный конструктор 
-    private TeleportaSysMessage() {
+    private TeleportaMessage() {
         super("i18n/teleportaMessages");
     }
     /**
@@ -34,8 +34,8 @@ public class TeleportaSysMessage extends AbstractI18nMessageStore {
     }
 
     // синглтон
-    private static final TeleportaSysMessage INSTANCE = new TeleportaSysMessage();
-    public static TeleportaSysMessage instance() {
+    private static final TeleportaMessage INSTANCE = new TeleportaMessage();
+    public static TeleportaMessage instance() {
         return INSTANCE;
     }
 }

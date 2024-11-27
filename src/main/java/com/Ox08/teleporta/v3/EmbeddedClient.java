@@ -1,6 +1,6 @@
 package com.Ox08.teleporta.v3;
 import com.Ox08.teleporta.v3.messages.TeleportaError;
-import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
+import com.Ox08.teleporta.v3.messages.TeleportaMessage;
 import com.Ox08.teleporta.v3.services.TeleClipboard;
 import com.Ox08.teleporta.v3.services.TeleFilesWatch;
 import javax.crypto.SecretKey;
@@ -82,7 +82,7 @@ public class EmbeddedClient extends AbstractClient {
         // register on relay
         register();
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage
+            LOG.fine(TeleportaMessage
                     .of("teleporta.system.message.portalRegistered", ctx.sessionId));
         }       
         // register watchers for each portal
@@ -133,7 +133,7 @@ public class EmbeddedClient extends AbstractClient {
                 final String[] files = getPending();
                 if (files != null) {
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(TeleportaSysMessage
+                        LOG.fine(TeleportaMessage
                                 .of("teleporta.system.message.foundPendingFiles",
                                 files.length));
                     }
@@ -231,7 +231,7 @@ public class EmbeddedClient extends AbstractClient {
         final File outputDir = new File(ctx.storageDir, "to");
         for (String p : ctx.relayCtx.portalNames.keySet()) {
             final File f = new File(outputDir, p);
-            Path pp = f.toPath();
+            final Path pp = f.toPath();
             if (!watch.isWatching(pp)) {
                 checkCreateFolder(f);
                 watch.register(pp);
@@ -247,7 +247,7 @@ public class EmbeddedClient extends AbstractClient {
      */
     public void sendClipboard(String data) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.sendingClipboard",
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.sendingClipboard",
                     data.length()));
         }
         if (ctx.relayCtx.currentCbFile!=null && !ctx.relayCtx.currentCbFile.delete()) {
@@ -266,6 +266,8 @@ public class EmbeddedClient extends AbstractClient {
         final SecretKey key;
         try (OutputStream out = Files.newOutputStream(cbout.toPath());
              ByteArrayInputStream in = new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8))) {
+            // write magic header
+            out.write(TELEPORTA_PACKET_HEADER);
             // generate session key (AES)
             key = tc.generateFileKey();
             final byte[] foreignPk = ctx.relayCtx.relayPair.getPublic().getEncoded();
@@ -294,7 +296,7 @@ public class EmbeddedClient extends AbstractClient {
             throw TeleportaError.withError(0x7214, e);
         }
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.clipboardSent",
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardSent",
                     data.length()));
         }
     }
@@ -331,7 +333,10 @@ public class EmbeddedClient extends AbstractClient {
         checkCreateFolder(toFolder);
         // create temp file on relay side
         final File out = new File(toFolder, generateUniqueID() + ".dat");
-        try (ZipOutputStream zout = new ZipOutputStream(Files.newOutputStream(out.toPath()));) {
+        try (OutputStream os = Files.newOutputStream(out.toPath());
+                ZipOutputStream zout = new ZipOutputStream(os)) {
+            // write magic header
+            os.write(TELEPORTED_FILE_HEADER);
             zout.putNextEntry(new ZipEntry("meta.properties"));
             props.store(zout, "");
             zout.putNextEntry(new ZipEntry("file.content"));
@@ -345,7 +350,7 @@ public class EmbeddedClient extends AbstractClient {
             zout.closeEntry();
             zout.flush();
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileSent",
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.fileSent",
                         file.getAbsolutePath()));
             }
         } finally {
@@ -370,7 +375,7 @@ public class EmbeddedClient extends AbstractClient {
      */
     public void downloadFile(String fileId) throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.downloadingFile", fileId));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.downloadingFile", fileId));
         }
         final File toFolder = new File(ctx.relayCtx.storageDir, ctx.sessionId),
                 rFile = new File(toFolder, fileId + ".dat");
@@ -382,7 +387,9 @@ public class EmbeddedClient extends AbstractClient {
         }
         final Properties props = new Properties();
         // we do unpack & decrypt on the fly, without any temp files
-        try (ZipInputStream zin = new ZipInputStream(Files.newInputStream(rFile.toPath()))) {
+        try (InputStream in = Files.newInputStream(rFile.toPath());
+             ZipInputStream zin = new ZipInputStream(in)) {
+            checkFileHeader(in);
             for (ZipEntry ze; (ze = zin.getNextEntry()) != null; ) {
                 if (ze.isDirectory() || ze.getName().isEmpty()) {
                     continue;
@@ -432,10 +439,8 @@ public class EmbeddedClient extends AbstractClient {
                     switch (type) {
                         // if its folder
                         case "folder": {
-
                             final File outz = new File(f, name );
                             tc.decryptFolder(rkey, zin, outz);
-
                             break;
                         }
                         // if content is file
@@ -448,7 +453,7 @@ public class EmbeddedClient extends AbstractClient {
                         }
                     }
                     if (LOG.isLoggable(Level.FINE)) {
-                        LOG.fine(TeleportaSysMessage.of("teleporta.system.message.fileDownloaded",
+                        LOG.fine(TeleportaMessage.of("teleporta.system.message.fileDownloaded",
                                 out.getAbsolutePath()));
                     }
                 }
@@ -467,13 +472,13 @@ public class EmbeddedClient extends AbstractClient {
      */
     public void downloadClipboard() throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage.of("teleporta.system.message.downloadingClipboard"));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.downloadingClipboard"));
         }
         final TeleportaRelay.RuntimePortal p = ctx.relayCtx.portals.get(ctx.sessionId);
         // put the mark first, to disallow repeats
         p.needLoadClipboard = false;
-
-        final File rFile = ctx.relayCtx.currentCbFile; // new File(ctx.relayCtx.storageDir, "cb.dat");
+        // use shared file, from relay's context
+        final File rFile = ctx.relayCtx.currentCbFile;
         if (rFile==null || !rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
             LOG.warning(TeleportaError.messageFor(0x7222,
                     rFile!=null ? rFile.getAbsolutePath() : ""));
@@ -481,6 +486,8 @@ public class EmbeddedClient extends AbstractClient {
         }
         try (BufferedInputStream bin = new BufferedInputStream(Files.newInputStream(rFile.toPath()), 4096);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
+            // check magic header presents
+            checkPacketHeader(bin,false);
             final SecretKeySpec rkey = readSessionKey(bin, false,
                     ctx.relayCtx.relayPair.getPrivate());
             if (rkey == null) {
@@ -489,7 +496,7 @@ public class EmbeddedClient extends AbstractClient {
             tc.decryptData(rkey, bin, bout);
             clip.setClipboard(bout.toString());
             if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaSysMessage
+                LOG.fine(TeleportaMessage
                         .of("teleporta.system.message.clipboardUpdated", bout.size()));
             }
         }
@@ -506,7 +513,7 @@ public class EmbeddedClient extends AbstractClient {
         ctx.relayCtx.portalNames.put(portalName, id);
         ctx.sessionId = id;
         if (LOG.isLoggable(Level.FINE)) {
-            LOG.fine(TeleportaSysMessage
+            LOG.fine(TeleportaMessage
                     .of("teleporta.system.message.portalRegistered", portalName));
         }
     }

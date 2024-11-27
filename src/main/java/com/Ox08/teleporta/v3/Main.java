@@ -1,6 +1,6 @@
 package com.Ox08.teleporta.v3;
 import com.Ox08.teleporta.v3.messages.TeleportaError;
-import com.Ox08.teleporta.v3.messages.TeleportaSysMessage;
+import com.Ox08.teleporta.v3.messages.TeleportaMessage;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -161,7 +161,7 @@ public class Main {
         // set default locale
         Locale.setDefault(locale);
         // set locale for messages
-        TeleportaSysMessage.instance().setErrorLocale(locale);
+        TeleportaMessage.instance().setErrorLocale(locale);
         // and for errors
         TeleportaError.instance().setErrorLocale(locale);
     }
@@ -186,8 +186,8 @@ public class Main {
     static void printLogo(boolean relay) {
         final SystemInfo si = SystemInfo.SI;
         System.out.printf(TELE_LOGO,
-                relay  ?TeleportaSysMessage.of("teleporta.system.message.teleportaRelayMode"):
-                        TeleportaSysMessage.of("teleporta.system.message.teleportaPortalMode"),
+                relay  ? TeleportaMessage.of("teleporta.system.message.teleportaRelayMode"):
+                        TeleportaMessage.of("teleporta.system.message.teleportaPortalMode"),
                 si.getBuildVersion(), si.getBuildNum(), si.getBuildTime());
     }
 
