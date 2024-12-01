@@ -2,12 +2,12 @@
 
 
 # Teleporta
-Teleporting files from 'Bob' to 'Alice' since 2015. Community version.
+Teleporting files from 'Bob' to 'Alice' through network since 2015. Community version.
 
-No UI, no passwords, no keys - just drag&drop to local folders. Works everywhere.
+No UI, no passwords, no keys - just drag&drop to local folder. Works everywhere.
 
 This is our internal tool, dedicated to fast and secure file exchange between team members.
-Could be used in public networks.
+Secure enough to use in public networks.
 
 [Feature plan for 2025](https://docs.google.com/spreadsheets/d/1G5hc_vl9MaJFP2rhF3_pZM2uZejiHG0KswkvXgyJyB8/edit?usp=sharing)
 
