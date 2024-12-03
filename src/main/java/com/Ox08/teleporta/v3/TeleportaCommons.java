@@ -30,7 +30,7 @@ import java.util.logging.Logger;
  */
 public class TeleportaCommons {
     private final static Logger LOG = Logger.getLogger("TC");
-    //public static final String FOLDERZIP_EXT = ".tmpzip";
+
     // DTO to store portal details
     public static class RegisteredPortal {
         final String name; // unique portal name (human readable)
@@ -257,6 +257,46 @@ public class TeleportaCommons {
     public static boolean isWindows() {
         return System.getProperty("os.name", "")
                 .toLowerCase().startsWith("windows");
+    }
+    /**
+     * This class is used to separate internal IDs, that we put to hashmaps and external form.
+     * Internally we use PK_22424242, but for external exchange we use only  22424242
+     */
+    public static class PK {
+        /**
+         * Generates new Portal id
+         * @return
+         *      new unique portal id
+         */
+        public static String generate() {
+            return "PK_" + generateUniqueID();
+        }
+        /**
+         * Build internal ID from external
+         * @param src
+         * @return
+         */
+        public static String fromExternal(String src) {
+            if (src==null ||src.isEmpty()) {
+                return null;
+            }
+            // strictly forbid any symbols except numbers
+            src = src.replaceAll("[^0-9]","");
+
+            // strictly limit length
+            if (src.isEmpty() || src.length()>32) {
+                return  null;
+            }
+            return "PK_" + src;
+        }
+        /**
+         * Convert internal ID to external form
+         * @param k
+         * @return
+         */
+        public static String toExternal(String k) {
+            return (k==null|| k.isEmpty())? k : k.replaceAll("[^0-9]", "");
+        }
     }
 
     /**

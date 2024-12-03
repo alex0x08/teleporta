@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 /**
+ * Stores build info
  * @author 0x08
  * @since 1.0
  */

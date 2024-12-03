@@ -23,7 +23,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 import static com.Ox08.teleporta.v3.TeleportaCommons.*;
-import static com.Ox08.teleporta.v3.TeleportaRelay.MAX_FILES_TO_LIST;
+import static com.Ox08.teleporta.v3.TeleportaRelay.EXT_FILE;
+
 /**
  * This is embedded client, used when Relay also act as portal
  * Note: there is no networking.
@@ -36,7 +37,9 @@ public class EmbeddedClient extends AbstractClient {
     private TeleClipboard clip;
     final TeleFilesWatch watch;
     final EmbeddedClientRuntimeContext ctx;
-    public EmbeddedClient(EmbeddedClientRuntimeContext ctx) {
+    private boolean wasInitialized;
+
+    EmbeddedClient(EmbeddedClientRuntimeContext ctx) {
         this.ctx = ctx;
         // if clipboard monitoring is enabled - start it
         if (ctx.allowClipboard) {
@@ -55,11 +58,15 @@ public class EmbeddedClient extends AbstractClient {
             this.watch = null;
         }
     }
-    public void init()  {
+    void init()  {
+        if (wasInitialized) {
+            throw TeleportaError.withError(0x7270);
+        }
+        wasInitialized = true;
         // create teleporta client's home folder
         final File teleportaHome = checkCreateHomeFolder("teleporta"),
-                inputDir = new File(teleportaHome, "from"), // for incoming files
-                outputDir = new File(teleportaHome, "to"); // for outgoing files
+                inputDir = new File(teleportaHome, TeleportaMessage.of("teleporta.folder.from")), // for incoming files
+                outputDir = new File(teleportaHome, TeleportaMessage.of("teleporta.folder.to")); // for outgoing files
         checkCreateFolder(inputDir);
         this.ctx.storageDir = teleportaHome;
         // check if we allow outgoing files on this portal
@@ -166,7 +173,7 @@ public class EmbeddedClient extends AbstractClient {
      */
     public String[] getPending() throws IOException {
         // on relay's side
-        final File toFolder = new File(ctx.relayCtx.storageDir, ctx.sessionId);
+        final File toFolder = new File(ctx.relayCtx.storageDir, PK.toExternal(ctx.sessionId));
         final TeleportaRelay.RuntimePortal p = ctx.relayCtx.portals.get(ctx.sessionId);
         // mark 'last seen online'
         p.lastSeen = System.currentTimeMillis();
@@ -187,10 +194,11 @@ public class EmbeddedClient extends AbstractClient {
         try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(toFolder.toPath())) {
             int fileCounter = 1;
             for (Path e : dirStream) {
-                if (fileCounter > MAX_FILES_TO_LIST) {
+                if (fileCounter > ctx.relayCtx.limits.maxPendingFilesAtOnce) {
                     break;
                 }
-                if (!e.toString().endsWith(".dat")) {
+                // process only fully uploaded files
+                if (!e.toString().endsWith(EXT_FILE)) {
                     continue;
                 }
                 String name = e.getFileName().toString();
@@ -216,7 +224,7 @@ public class EmbeddedClient extends AbstractClient {
         if (!ctx.allowOutgoing) {
             return;
         }
-        final File outputDir = new File(ctx.storageDir, "to");
+        final File outputDir = new File(ctx.storageDir, TeleportaMessage.of("teleporta.folder.to"));
         for (String e:expiredPortals) {
             final Path p = new File(outputDir, e).toPath();
             if (watch.isWatching(p)) {
@@ -228,7 +236,7 @@ public class EmbeddedClient extends AbstractClient {
      * In embedded client, this function is used to update watchers only
      */
     public void reloadPortals() {
-        final File outputDir = new File(ctx.storageDir, "to");
+        final File outputDir = new File(ctx.storageDir, TeleportaMessage.of("teleporta.folder.to"));
         for (String p : ctx.relayCtx.portalNames.keySet()) {
             final File f = new File(outputDir, p);
             final Path pp = f.toPath();
@@ -255,7 +263,8 @@ public class EmbeddedClient extends AbstractClient {
                 LOG.warning(TeleportaError.messageFor(0x6106,
                         ctx.relayCtx.currentCbFile.getAbsolutePath()));
         }
-        final File cbout = new File(ctx.relayCtx.storageDir,System.currentTimeMillis() + "_cb.dat");
+        final File cbout = new File(ctx.relayCtx.storageDir,
+                String.format("cb_%d_f%s", System.currentTimeMillis(), EXT_FILE));
         // if it's cannot been created - just respond bad request
         if (!cbout.createNewFile()) {
             // clipboard file not found
@@ -274,7 +283,7 @@ public class EmbeddedClient extends AbstractClient {
             final PublicKey pk = tc.restorePublicKey(foreignPk);
             // encrypt session key by using relay's public key
             final byte[] enc = tc.encryptKey(key.getEncoded(), pk);
-            // write it to underying stream
+            // write it to underlying stream
             out.write(enc);
             out.flush();
             // encrypt clipboard data
@@ -328,18 +337,18 @@ public class EmbeddedClient extends AbstractClient {
             throw TeleportaError.withError(0x7213, e);
         }
         // generate storage folder
-        final File toFolder = new File(ctx.relayCtx.storageDir, receiverId);
+        final File toFolder = new File(ctx.relayCtx.storageDir, PK.toExternal(receiverId));
         // try to create it if it's not exist
         checkCreateFolder(toFolder);
         // create temp file on relay side
-        final File out = new File(toFolder, generateUniqueID() + ".dat");
+        final File out = new File(toFolder, String.format("f_%d%s", generateUniqueID(), EXT_FILE));
         try (OutputStream os = Files.newOutputStream(out.toPath());
                 ZipOutputStream zout = new ZipOutputStream(os)) {
             // write magic header
             os.write(TELEPORTED_FILE_HEADER);
-            zout.putNextEntry(new ZipEntry("meta.properties"));
+            zout.putNextEntry(new ZipEntry(ENTRY_META));
             props.store(zout, "");
-            zout.putNextEntry(new ZipEntry("file.content"));
+            zout.putNextEntry(new ZipEntry(ENTRY_DATA));
             if (file.isDirectory()) {
                 tc.encryptFolder(key,file,zout);
             } else {
@@ -360,10 +369,6 @@ public class EmbeddedClient extends AbstractClient {
             } else if (file.isDirectory()) {
                 deleteRecursive(file, true);
             }
-            /*if (packedF != null && !packedF.delete()) {
-                LOG.warning(TeleportaError.messageFor(0x6107,
-                        packedF.getAbsolutePath()));
-            }*/
         }
     }
     /**
@@ -378,7 +383,7 @@ public class EmbeddedClient extends AbstractClient {
             LOG.fine(TeleportaMessage.of("teleporta.system.message.downloadingFile", fileId));
         }
         final File toFolder = new File(ctx.relayCtx.storageDir, ctx.sessionId),
-                rFile = new File(toFolder, fileId + ".dat");
+                rFile = new File(toFolder, String.format("f_%s%s", fileId, EXT_FILE));
         if (!rFile.exists() || !rFile.isFile() || !rFile.canRead()) {
             // stored file not found
             LOG.warning(TeleportaError.messageFor(0x6114,
@@ -398,13 +403,14 @@ public class EmbeddedClient extends AbstractClient {
                 // we read zip in exactly same order as
                 // we create it, so there is no case when file content
                 // will be read *before* metadata
-                if (props.isEmpty() && "meta.properties".equalsIgnoreCase(ze.getName())) {
+                if (props.isEmpty() && ENTRY_META.equalsIgnoreCase(ze.getName())) {
                     props.load(zin);
-                } else if ("file.content".equalsIgnoreCase(ze.getName())) {
-                    final String from = props.getProperty("from"), // sender id
+                } else if (ENTRY_DATA.equalsIgnoreCase(ze.getName())) {
+                    final String from = PK.fromExternal(props.getProperty("from")), // sender id
                             name = props.getProperty("name"), // original file name
                             type = props.getProperty("type"), // content type (file or folder)
                             fileKey = props.getProperty("fileKey"); // unique file key
+                    // check for source portal
                     if (!ctx.relayCtx.portals.containsKey(from)) {
                         // Portal not found
                         LOG.warning(TeleportaError.messageFor(0x6108, from));
@@ -414,7 +420,7 @@ public class EmbeddedClient extends AbstractClient {
                     final TeleportaCommons.RegisteredPortal p = ctx.relayCtx.portals.get(from);
                     // build target folder, based on sender's portal name
                     final File f = Paths.get(ctx.storageDir.getAbsolutePath(),
-                            "from", p.name).toFile();
+                            TeleportaMessage.of("teleporta.folder.from"), p.name).toFile();
                     // create folder tree
                     TeleportaCommons.checkCreateFolder(f);
                     // create target file
@@ -469,6 +475,7 @@ public class EmbeddedClient extends AbstractClient {
     /**
      * This actually loads clipboard update from relay's context, without networking
      * @throws IOException
+     *          on i/o errors
      */
     public void downloadClipboard() throws IOException {
         if (LOG.isLoggable(Level.FINE)) {
@@ -505,13 +512,13 @@ public class EmbeddedClient extends AbstractClient {
      * Register embedded client without networking
      */
     public void register() {
-        final String id = generateUniqueID() + "";
+        final String id = PK.generate();
         // try name from environment
         String portalName = TeleportaClient.buildPortalName();
         ctx.relayCtx.portals.put(id, new TeleportaRelay.RuntimePortal(portalName,
                 toHex(ctx.relayCtx.relayPair.getPublic().getEncoded(), 0, 0)));
         ctx.relayCtx.portalNames.put(portalName, id);
-        ctx.sessionId = id;
+        ctx.sessionId = PK.toExternal(id); // mimic real client
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine(TeleportaMessage
                     .of("teleporta.system.message.portalRegistered", portalName));

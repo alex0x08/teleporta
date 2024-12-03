@@ -23,17 +23,26 @@ import static java.nio.file.StandardWatchEventKinds.*;
  * @since 1.0
  */
 public class TeleFilesWatch {
+    public static final int FILES_BULK_LIMIT = 1000;
+
     private final static Logger LOG = Logger.getLogger("TC");
     private final ScheduledExecutorService ses;
     // actual watcher implementation used
     private final FolderWatcher watcher;
+    // shared lock
     private final Object l = new Object();
+    // folder events queue
     private final Queue<FileEvent> fq = new ConcurrentLinkedQueue<>();
+    // list of registered handlers
     private final List<FileProcessHandler> ph = new ArrayList<>();
-    private volatile boolean running;
+    // mark that we use 'lock' file feature
     private final boolean useLockFile;
+    // stores links to files, that currently being processed
     private final Set<File> processingAfterUnlock;
+    // stores lock states, could be null if 'lock' file feature is turned off
     private final Map<Path,DirState> lockFiles;
+    // mark that watcher service is running
+    private volatile boolean running;
 
     /**
      * Default constructor
@@ -71,20 +80,27 @@ public class TeleFilesWatch {
         running = true;
         // this task will loop over events queue and make actual teleportation
         ses.scheduleAtFixedRate(() -> {
+            // if there are no events - leave
             if (fq.isEmpty()) {
                 return;
             }
             final Map<String, List<File>> events = new HashMap<>();
             for (FileEvent e = fq.poll();
                  e != null; e = fq.poll()) {
+                // here we group files for each receiver
                 final List<File> files = events.containsKey(e.receiver) ?
                         events.get(e.receiver) : new ArrayList<>();
+                // note: because there is some delay between even creation and processing,
+                // there could be a case, when file is deleted *after* we got its event
+                // so need to check its present
                 if (!e.file.exists()) {
                     continue;
                 }
                 files.add(e.file);
                 events.put(e.receiver, files);
             }
+            // here we make further processing (actual send),
+            // files are grouped for each receiver portal
             for (Map.Entry<String, List<File>> e : events.entrySet()) {
                 for (FileProcessHandler h : ph) {
                     h.handle(e.getValue(), e.getKey());
@@ -99,8 +115,11 @@ public class TeleFilesWatch {
         return  watcher.isWatching(dir);
     }
     public void unregister(Path dir) {
+        if (!watcher.isWatching(dir)) {
+            return;
+        }
         // unregister lock, if using 'lock' files
-        if (useLockFile) {
+        if (useLockFile && lockFiles.containsKey(dir)) {
             synchronized (l) {
                 lockFiles.remove(dir);
             }
@@ -144,8 +163,7 @@ public class TeleFilesWatch {
         private final File file; // link to file
         private final String receiver;  // receiver portal name
         private FileEvent(File f, String r) {
-            this.file = f;
-            this.receiver = r;
+            this.file = f;this.receiver = r;
         }
     }
 
@@ -169,23 +187,19 @@ public class TeleFilesWatch {
                 try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(p.getKey())) {
                     int fileCounter = 0;
                     for (Path e : dirStream) {
-                        if (fileCounter > 1000) {
+                        if (fileCounter > FILES_BULK_LIMIT) {
                             break;
                         }
                         final File f = e.toFile();
                         if (processingAfterUnlock.contains(f)) {
                             continue;
                         }
-                        if (!isAcceptable(f)) {
+                        if (!isAcceptable(f,false)) {
                             // ignore non-existent or non-readable
                             // ( possibly deleted before trigger happens )
                             continue;
                         }
 
-                        // ignore packed folders - in process
-                        if (f.getName().endsWith(".tmpzip")) {
-                            continue;
-                        }
                         // print out event
                         if (LOG.isLoggable(Level.FINE)) {
                             LOG.fine(TeleportaMessage
@@ -208,18 +222,19 @@ public class TeleFilesWatch {
         }, 3, 3, TimeUnit.SECONDS);
     }
     /**
-     * Checks if file or directory is acceptable to transfer
+     * Checks if file or directory is acceptable for transfer
      * @param f
      *          target file
      * @return
+     *      true - if Teleporta is able to transfer it, false - otherwise
      */
-    public static boolean isAcceptable(File f) {
+    public static boolean isAcceptable(File f, boolean fileOnly) {
         // if file does not exist (could be fast deleted) - ignore
         if (!f.exists()) {
             return false;
         }
         // if file is directory and cannot be read
-        if (f.isDirectory() && f.canRead()) {
+        if (!fileOnly && f.isDirectory() && f.canRead()) {
             return true;
         }
         // if file is empty
@@ -229,7 +244,7 @@ public class TeleFilesWatch {
         //
         if (f.isFile()) {
             // last but most important check - try to open and read fist byte
-            // if all ok - file is ready to transfer
+            // if all ok - file is acceptable
             try (FileInputStream in = new FileInputStream(f)) {
                 return in.read() != -1;
             } catch (Exception ignored) {
@@ -247,11 +262,33 @@ public class TeleFilesWatch {
         PROCESSING, // there is background file uploading files to relay, 'lock' file is removed
         READY // folder is ready for process, has no files and no 'lock' file
     }
-
+    /**
+     * Common interface, that describes 2 implementations we use in Teleporta
+     */
     public interface FolderWatcher {
+        /**
+         * Check if folder being monitored for changes
+         * @param dir
+         *          full path to folder
+         * @return
+         *      true - folder is monitored, false - otherwise
+         */
         boolean isWatching(Path dir);
+        /**
+         * Registers folder for monitoring.
+         * @param dir
+         *          provided folder path
+         */
         void register(Path dir);
+        /**
+         * Removes folder monitoring
+         * @param dir
+         *          provided folder path
+         */
         void unregister(Path dir);
+        /**
+         * Start watching service
+         */
         void start();
     }
 
@@ -301,7 +338,6 @@ public class TeleFilesWatch {
                 throw TeleportaError.withError(0x6102,ex);
             }
         }
-
         @Override
         public void unregister(Path dir) {
             if (!keys.containsValue(dir)) {
@@ -361,7 +397,7 @@ public class TeleFilesWatch {
                             }
                             final File f = child.toFile();
                             // means 'lock' file removed
-                            if ("lock".equalsIgnoreCase(f.getName())) {
+                            if (TeleportaMessage.of("teleporta.service.fileWatch.lockFile").equalsIgnoreCase(f.getName())) {
                                 lockFiles.put(dir,DirState.PROCESSING);
                                 if (LOG.isLoggable(Level.FINE)) {
                                     LOG.fine(TeleportaMessage
@@ -397,7 +433,8 @@ public class TeleFilesWatch {
                             // we check for 'lock' file, if not exist - create one
                             // Till this file
                             if (useLockFile) {
-                                final File lock = new File(child.getParent().toFile(),"lock");
+                                final File lock = new File(child.getParent().toFile(),
+                                        TeleportaMessage.of("teleporta.service.fileWatch.lockFile"));
                                 try {
                                     if (!lock.createNewFile()) {
                                         // cannot create lock file
@@ -417,10 +454,6 @@ public class TeleFilesWatch {
                                 continue;
                             }
 
-                            // ignore packed folders - in process
-                            if (f.getName().endsWith(".tmpzip")) {
-                                continue;
-                            }
                             // print out event
                             if (LOG.isLoggable(Level.FINE)) {
                                 LOG.fine(String.format("%s: %s: %s",
@@ -455,6 +488,9 @@ public class TeleFilesWatch {
         }
         @Override
         public void unregister(Path dir) {
+            if (!paths.contains(dir)) {
+                return;
+            }
             // for 'dumb' watcher, we don't register in WatcherService 
             // and use our own list instead.
             paths.remove(dir);
@@ -472,7 +508,8 @@ public class TeleFilesWatch {
                     // check for 'lock' file, if file deleted - trigger uploading
                     if (useLockFile && lockFiles!=null && lockFiles.containsKey(p)
                             && lockFiles.get(p) == DirState.LOCKED) {
-                        final File lock = new File(p.toFile(),"lock");
+                        final File lock = new File(p.toFile(),
+                                TeleportaMessage.of("teleporta.service.fileWatch.lockFile"));
                         if (!lock.exists()) {
                             lockFiles.put(p,DirState.PROCESSING);
                             if (LOG.isLoggable(Level.FINE)) {
@@ -487,7 +524,7 @@ public class TeleFilesWatch {
                     try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(p)) {
                         int fileCounter = 0;
                         for (Path e : dirStream) {
-                            if (fileCounter > 1000) {
+                            if (fileCounter > FILES_BULK_LIMIT) {
                                 break;
                             }
                             final File f = e.toFile();
@@ -503,19 +540,8 @@ public class TeleFilesWatch {
                                 }
                                 break;
                             }
-                            // ignore packed folders - in process
-                            if (f.getName().endsWith(".tmpzip")) {
-                                continue;
-                            }
-                            // ignore caught 'folder archive' during creation process
-                            if (f.isDirectory()) {
-                                final File processingZip = new File(f.getParentFile(),
-                                        f.getName()+".tmpzip");
-                                if (processingZip.exists()) {
-                                    continue;
-                                }
-                            }
-                            if (!isAcceptable(f)) {
+
+                            if (!isAcceptable(f,false)) {
                                 // ignore non-existent or non-readable
                                 // ( possibly deleted before trigger happens )
                                 continue;
@@ -526,7 +552,8 @@ public class TeleFilesWatch {
                                             "teleporta.system.message.lockFileCreated",
                                             f.getAbsolutePath()));
                                 }
-                                final File lock = new File(p.toFile(),"lock");
+                                final File lock = new File(p.toFile(),
+                                        TeleportaMessage.of("teleporta.service.fileWatch.lockFile"));
                                 try {
                                     if (!lock.createNewFile()) {
                                         LOG.warning(TeleportaError.messageFor(0x7269,

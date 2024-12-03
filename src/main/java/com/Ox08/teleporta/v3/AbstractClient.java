@@ -34,6 +34,8 @@ public abstract class AbstractClient {
     public static final byte[] TELEPORTED_FILE_HEADER = "TELEPORTEDFILE".getBytes(),
             TELEPORTA_PACKET_HEADER = "TELEPORTAPACKET".getBytes();
 
+    protected static final String ENTRY_META = "meta.properties", // zip entry with metadata
+            ENTRY_DATA = "file.content"; // zip entry with file content
 
     /**
      * Creates link to Teleporta's home on Desktop
@@ -132,7 +134,11 @@ public abstract class AbstractClient {
         }
         return true; // process next
     }
-
+    /**
+     * Uset User-Agent field for Teleporta client connections
+     * @param hc
+     * @param ctx
+     */
     protected void setVersion(URLConnection hc,ClientRuntimeContext ctx) {
         hc.setRequestProperty("User-Agent", "Teleporta Portal/" + (ctx.respondVersion ?
                 SystemInfo.SI.getBuildVersion()  : "Unknown"));
@@ -187,7 +193,7 @@ public abstract class AbstractClient {
     /**
      * Teleporta Client's execution context
      */
-    public static class ClientRuntimeContext {
+    protected static class ClientRuntimeContext {
         final File storageDir; // selected storage dir
         final URL relayUrl; // current relay url
         final boolean allowClipboard, // is clipboard allowed?
