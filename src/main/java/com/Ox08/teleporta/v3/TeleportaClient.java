@@ -229,11 +229,17 @@ public class TeleportaClient extends AbstractClient{
                     }
                     // there could be only *few* files always, no need for dir streaming
                     for (String file : files) {
+                        if (ctx.downloadingFiles.contains(file)) {
+                            return;
+                        }
+                        ctx.downloadingFiles.add(file);
                         ses.submit(() -> {
                             try {
                                 c.downloadFile(file);
                             } catch (IOException e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
+                            } finally {
+                                ctx.downloadingFiles.remove(file);
                             }
                         });
                     }
@@ -273,6 +279,7 @@ public class TeleportaClient extends AbstractClient{
         final URLConnection con = u.openConnection();
         // no need to check class, there always will be just HttpURLConnection
         final HttpURLConnection http = (HttpURLConnection) con;
+        http.setDefaultUseCaches(false);
         setVersion(con,ctx);
 
         int code = http.getResponseCode();
@@ -308,6 +315,8 @@ public class TeleportaClient extends AbstractClient{
             try (ByteArrayInputStream bin = new ByteArrayInputStream(bout.toByteArray())) {
                 props.load(bin);
             }
+        } finally {
+            http.disconnect();
         }
         // no properties at all - means no pending files and no additional commands - just return null
         if (props.isEmpty()) {
@@ -525,6 +534,7 @@ public class TeleportaClient extends AbstractClient{
         final URLConnection con = u.openConnection();
         final HttpURLConnection http = (HttpURLConnection) con;
         setVersion(con,ctx);
+        http.setChunkedStreamingMode(1024 * 1024 * 5); // 5Mb
         http.setRequestMethod("POST");
         http.setDoOutput(true);
         // build metadata
@@ -556,12 +566,15 @@ public class TeleportaClient extends AbstractClient{
             }
             zout.closeEntry();
             zout.flush();
-
+            // must be called!
+            zout.close();
             // MUST be called, otherwise request will not be executed!
             int code = http.getResponseCode();
             if (code != HttpURLConnection.HTTP_OK) {
                 LOG.warning(TeleportaError.messageFor(0x7002, code));
-                http.disconnect();
+                try {
+                    http.disconnect();
+                } catch (Exception ignore) {}
                 return;
             }
             if (file.isFile() && !file.delete()) {
@@ -579,8 +592,9 @@ public class TeleportaClient extends AbstractClient{
             throw TeleportaError.withError(0x7213,e);
         } finally {
             ctx.processingFiles.remove(file.getAbsolutePath());
+            http.disconnect();
+
         }
-        http.disconnect();
     }
 
     /**
@@ -636,6 +650,8 @@ public class TeleportaClient extends AbstractClient{
      * @throws IOException on I/O errors
      */
     public void downloadFile(String fileId) throws IOException {
+
+
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine(TeleportaMessage.of("teleporta.system.message.downloadingFile",fileId));
         }
@@ -662,7 +678,7 @@ public class TeleportaClient extends AbstractClient{
             // check for file magic, throws error if not found
             checkFileHeader(in);
             for (ZipEntry ze; (ze = zin.getNextEntry()) != null; ) {
-                // dont process folders or broken names
+                // don't process folders or broken names
                 if (ze.isDirectory() || ze.getName().isEmpty()) {
                     continue;
                 }
@@ -731,8 +747,9 @@ public class TeleportaClient extends AbstractClient{
                     }
                 }
             }
+        } finally {
+            http.disconnect();
         }
-        http.disconnect();
     }
 
     /**

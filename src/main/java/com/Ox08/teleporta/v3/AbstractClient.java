@@ -206,6 +206,7 @@ public abstract class AbstractClient {
         final Map<String, String> portalNames = new LinkedHashMap<>();
         KeyPair keyPair; // portal public&private keys
         final Set<String> processingFiles = new HashSet<>();
+        final Set<String> downloadingFiles = new HashSet<>();
         ClientRuntimeContext(URL relayUrl, File storageDir,
                              boolean allowClipboard,
                              boolean allowOutgoing, boolean useLockFile, boolean respondVersion) {

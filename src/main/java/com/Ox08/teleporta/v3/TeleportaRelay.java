@@ -107,6 +107,7 @@ public class TeleportaRelay {
         }
         // create server
         final HttpServer server = HttpServer.create(new InetSocketAddress(port), 50);
+        server.setExecutor(Executors.newFixedThreadPool(255));
         final TeleCrypt tc = new TeleCrypt();
         // generate relay key pair
         final KeyPair rkp = tc.generateKeys();
@@ -339,7 +340,7 @@ public class TeleportaRelay {
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.respondPortals", count));
             }
-            respondEncryptedProperties(p.publicKey, props, httpExchange, false);
+            respondEncryptedProperties(p.publicKey, props, httpExchange, true);
         }
     }
     /**
@@ -479,7 +480,7 @@ public class TeleportaRelay {
             if (motd!=null) {
                 resp.setProperty("motd",motd);
             }
-            respondProperties(resp, httpExchange, false);
+            respondProperties(resp, httpExchange, true);
         }
     }
 
@@ -568,7 +569,7 @@ public class TeleportaRelay {
                 return;
             }
             props.setProperty("files", sb.toString());
-            respondEncryptedProperties(p.publicKey, props, httpExchange, false);
+            respondEncryptedProperties(p.publicKey, props, httpExchange, true);
         }
     }
     /**
@@ -603,7 +604,6 @@ public class TeleportaRelay {
                 respondAndClose(400, httpExchange);
                 return;
             }
-
             if (!rc.portals.containsKey(from)) {
                 LOG.warning(TeleportaError.messageFor(0x6108, from));
                 respondAndClose(403, httpExchange);
@@ -617,6 +617,7 @@ public class TeleportaRelay {
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.fromTo", from, to));
             }
+            final RuntimePortal p = rc.portals.get(to);
             // generate storage folder
             // external form is used as folder name
             final File toFolder = new File(rc.storageDir, PK.toExternal(to));
@@ -629,8 +630,12 @@ public class TeleportaRelay {
             // transfer file
             try (InputStream in = httpExchange.getRequestBody();
                  FileOutputStream fout = new FileOutputStream(out)) {
-                for (int n = in.read(buffer); n >= 0; n = in.read(buffer))
+                for (int n = in.read(buffer); n >= 0; n = in.read(buffer)) {
+                    // we need to update lastSeen during uploading, because it could be slow
+                    p.lastSeen = System.currentTimeMillis();
                     fout.write(buffer, 0, n);
+                    fout.flush();
+                }
 
                 // build target file, but with .DAT extension
                 final File dat_out = new File(out.getParentFile(),
@@ -651,6 +656,7 @@ public class TeleportaRelay {
                 }
                 //  respond 200 OK with no data
                 httpExchange.sendResponseHeaders(200, 0);
+                httpExchange.close();
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
                 // delete uncompleted upload on error
@@ -877,6 +883,8 @@ public class TeleportaRelay {
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.toFile", to, fileId));
             }
+            final RuntimePortal p = rc.portals.get(to);
+
             // external form is used for files/folders stored on disk
             final File toFolder = new File(rc.storageDir, PK.toExternal(to)),
                     rFile = new File(toFolder, String.format("f_%s%s", PK.toExternal(fileId), EXT_FILE));
@@ -894,7 +902,11 @@ public class TeleportaRelay {
                  FileInputStream fin = new FileInputStream(rFile)) {
                 // respond file data
                 for (int n = fin.read(buffer); n >= 0; n = fin.read(buffer)) {
+                    // mark 'last seen online'
+                    p.lastSeen = System.currentTimeMillis();
+
                     out.write(buffer, 0, n);
+                    out.flush();
                 }
                 if (LOG.isLoggable(Level.FINE)) {
                     LOG.fine(TeleportaMessage.of("teleporta.system.message.fileDownloaded",
