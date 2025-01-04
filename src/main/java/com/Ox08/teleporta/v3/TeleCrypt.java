@@ -12,6 +12,8 @@ import java.security.*;
 import java.security.spec.EncodedKeySpec;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -24,6 +26,8 @@ import java.util.zip.ZipOutputStream;
  * @since 1.0
  */
 public class TeleCrypt {
+    private static final Logger LOG = Logger.getLogger("TC");
+
     public static final int SESSION_KEY_LEN = 256,IV_LEN = 16;
 
     public static final String SESSION_CYPHER= "AES/CBC/PKCS5Padding",
@@ -107,11 +111,21 @@ public class TeleCrypt {
             final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
             final byte[] buffer = new byte[4096];
+            final AbstractClient.CountingZipInputStream cz = inputStream instanceof AbstractClient.CountingZipInputStream
+                    ? (AbstractClient.CountingZipInputStream) inputStream :null;
             int bytesRead;
             // don't wrap in try-catch - don't close it there!
             final CipherInputStream cipherIn = new CipherInputStream(inputStream, cipher);
-                while ((bytesRead = cipherIn.read(buffer)) != -1) {
+            int pp =0;
+            while ((bytesRead = cipherIn.read(buffer)) != -1) {
                     outputStream.write(buffer, 0, bytesRead);
+                    if (LOG.isLoggable(Level.FINE) && cz!=null) {
+                      int p = cz.getPercent();
+                      if (p % 10 == 0 && p != pp) {
+                          LOG.fine(String.format("Downloading %s : %d%%",cz.getFileId(), p));
+                          pp = p;
+                      }
+                    }
                 }
         } catch (TeleportationException | IOException 
                 | InvalidAlgorithmParameterException 
@@ -173,14 +187,25 @@ public class TeleCrypt {
             // note: required custom implementation to avoid closing of parent stream
             final NonclosableCipherOutputStream cipherOut
                     = new NonclosableCipherOutputStream(outputStream, cipher);
+            final AbstractClient.CountingZipOutputStream cz = outputStream instanceof AbstractClient.CountingZipOutputStream
+                    ? (AbstractClient.CountingZipOutputStream) outputStream :null;
+
             // store IV directly in file as first 16 bytes
             final byte[] iv = cipher.getIV();
             outputStream.write(iv);
             final byte[] buffer = new byte[4096];
             int bytesRead;
+            int pp =0;
             while ((bytesRead = inputStream.read(buffer)) != -1) {
                 cipherOut.write(buffer, 0, bytesRead);
                 cipherOut.flush();
+                if (LOG.isLoggable(Level.FINE) && cz!=null) {
+                    int p = cz.getPercent();
+                    if (p % 10 == 0 && p != pp) {
+                        LOG.fine(String.format("Uploading %s : %d%%",cz.getFileId(), p));
+                        pp = p;
+                    }
+                }
             }
             cipherOut.doFinal();
         } catch (IOException | InvalidAlgorithmParameterException 

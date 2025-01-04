@@ -4,9 +4,7 @@ import com.Ox08.teleporta.v3.services.TeleLnk;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.awt.*;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.URL;
 import java.net.URLConnection;
@@ -17,6 +15,8 @@ import java.security.PrivateKey;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 import static com.Ox08.teleporta.v3.TeleportaCommons.isWindows;
 /**
@@ -110,7 +110,6 @@ public abstract class AbstractClient {
         // try to restore it, to being used later
         return new SecretKeySpec(dec, "AES");
     }
-
     protected void checkFileHeader(InputStream in) throws IOException {
         // check for file magic header
         final byte[] head = new byte[TELEPORTED_FILE_HEADER.length];
@@ -119,7 +118,6 @@ public abstract class AbstractClient {
             throw TeleportaError.withError(0x7018);
         }
     }
-
     public static boolean checkPacketHeader(InputStream in,
                                       boolean allowEmpty) throws IOException {
         // check for magic header
@@ -143,7 +141,6 @@ public abstract class AbstractClient {
         hc.setRequestProperty("User-Agent", "Teleporta Portal/" + (ctx.respondVersion ?
                 SystemInfo.SI.getBuildVersion()  : "Unknown"));
     }
-
     /**
      * Build portal name
      *
@@ -216,6 +213,112 @@ public abstract class AbstractClient {
             this.allowOutgoing = allowOutgoing;
             this.useLockFile = useLockFile;
             this.respondVersion = respondVersion;
+        }
+    }
+
+    static class CountingZipOutputStream extends ZipOutputStream {
+        private final long total;
+        private final String fileId;
+        private long count;
+        /**
+         * Wraps another output stream, counting the number of bytes written.
+         *
+         * @param out the output stream to be wrapped
+         */
+        public CountingZipOutputStream(String fileId,long total,OutputStream out) {
+            super(out); this.fileId = fileId; this.total = total;
+        }
+        public String getFileId() {
+            return fileId;
+        }
+        public int getPercent() {
+            return (int)(count * 100.0 / total + 0.5);
+        }
+        /** Returns the number of bytes written. */
+        public long getCount() {
+            return count;
+        }
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            super.write(b, off, len); count += len;
+        }
+        @Override
+        public void write(int b) throws IOException {
+            super.write(b); count++;
+        }
+        // Overriding close() because FilterOutputStream's close() method pre-JDK8 has bad behavior:
+        // it silently ignores any exception thrown by flush(). Instead, just close the delegate stream.
+        // It should flush itself if necessary.
+        @Override
+        public void close() throws IOException {
+            super.close();
+        }
+    }
+
+    static class CountingZipInputStream extends ZipInputStream {
+        private long count,mark = -1;
+        private final long total;
+        private final String fileId;
+        /**
+         * Wraps another input stream, counting the number of bytes read.
+         *
+         * @param in the input stream to be wrapped
+         */
+        public CountingZipInputStream(String fileId,long total,InputStream in) {
+            super(in); this.total = total; this.fileId = fileId;
+        }
+        public String getFileId() {
+            return fileId;
+        }
+        public int getPercent() {
+            return (int)(count * 100.0 / total + 0.5);
+        }
+        /** Returns the number of bytes read. */
+        public long getCount() {
+            return count;
+        }
+        @Override
+        public int read() throws IOException {
+            int result = super.read();
+            if (result != -1) {
+                count++;
+            }
+            return result;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            final int result = super.read(b, off, len);
+            if (result != -1) {
+                count += result;
+            }
+            return result;
+        }
+
+        @Override
+        public long skip(long n) throws IOException {
+            final long result = super.skip(n);
+            count += result;
+            return result;
+        }
+
+        @Override
+        public synchronized void mark(int readlimit) {
+            super.mark(readlimit);
+            mark = count;
+            // it's okay to mark even if mark isn't supported, as reset won't work
+        }
+
+        @Override
+        public synchronized void reset() throws IOException {
+            if (!in.markSupported()) {
+                throw new IOException("Mark not supported");
+            }
+            if (mark == -1) {
+                throw new IOException("Mark not set");
+            }
+            super.reset();
+            count = mark;
         }
     }
 }

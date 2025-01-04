@@ -544,7 +544,7 @@ public class TeleportaClient extends AbstractClient{
         props.setProperty("type", file.isDirectory() ? "folder" : "file");
         final SecretKey key;
         try (OutputStream out = http.getOutputStream();
-                ZipOutputStream zout = new ZipOutputStream(out)) {
+                CountingZipOutputStream zout = new CountingZipOutputStream(file.getName(),file.length(),out)) {
             ctx.processingFiles.add(file.getAbsolutePath());
             out.write(TELEPORTED_FILE_HEADER);
             key = tc.generateFileKey(); // generate session key (AES)
@@ -650,8 +650,6 @@ public class TeleportaClient extends AbstractClient{
      * @throws IOException on I/O errors
      */
     public void downloadFile(String fileId) throws IOException {
-
-
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine(TeleportaMessage.of("teleporta.system.message.downloadingFile",fileId));
         }
@@ -663,7 +661,7 @@ public class TeleportaClient extends AbstractClient{
         final URLConnection con = u.openConnection();
         final HttpURLConnection http = (HttpURLConnection) con;
         setVersion(con,ctx);
-        int code = http.getResponseCode();
+        final int code = http.getResponseCode();
         // check for basic HTTP codes first
         if (code != HttpURLConnection.HTTP_OK) {
             // Unexpected relay response
@@ -671,12 +669,18 @@ public class TeleportaClient extends AbstractClient{
             http.disconnect();
             return;
         }
+        // content size
+        final long fsize = http.getContentLengthLong();
+        if (LOG.isLoggable(Level.FINE)) {
+            LOG.fine(String.format("File %s ,size: %d",fileId,fsize));
+        }
         final Properties props = new Properties();
         // we do unpack & decrypt on the fly, without any temp files
         try (InputStream in  = http.getInputStream();
-                ZipInputStream zin = new ZipInputStream(in)) {
+                CountingZipInputStream zin = new CountingZipInputStream(fileId,fsize,in)) {
             // check for file magic, throws error if not found
             checkFileHeader(in);
+
             for (ZipEntry ze; (ze = zin.getNextEntry()) != null; ) {
                 // don't process folders or broken names
                 if (ze.isDirectory() || ze.getName().isEmpty()) {
@@ -761,7 +765,7 @@ public class TeleportaClient extends AbstractClient{
     public boolean register() throws IOException {
         final String part = decodeUrl(ctx.relayUrl, "register");
         // note:  existing path will be overwritten
-        final URL u = new URL(ctx.relayUrl, ctx.relayUrl.getPath() + "/" + part);
+        final URL u = new URL(ctx.relayUrl, String.format("%s/%s", ctx.relayUrl.getPath(), part));
         // try name from environment
         String portalName = buildPortalName();
 
@@ -776,6 +780,9 @@ public class TeleportaClient extends AbstractClient{
         props.setProperty("name", portalName);
         props.setProperty("publicKey",
                 toHex(ctx.keyPair.getPublic().getEncoded(), 0, 0));
+        if (ctx.sessionId!=null) {
+            props.setProperty("currentId", ctx.sessionId);
+        }
 
         boolean privateRelay = false;
         final String relayKey;

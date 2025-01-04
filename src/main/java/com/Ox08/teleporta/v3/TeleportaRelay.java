@@ -387,7 +387,8 @@ public class TeleportaRelay {
             // portal name (must be unique)
             final String name = data.getProperty("name", null),
                     // portal's public key
-                    publicKey = data.getProperty("publicKey", null);
+                    publicKey = data.getProperty("publicKey", null),
+                    currentId = data.getProperty("currentId",null);
             /*
              * In 'private' mode, client must send special encrypted message,
              *  created with his copy of relay's public key.
@@ -413,8 +414,12 @@ public class TeleportaRelay {
                     return;
                 }
             }
-            // unique ID
-            String id = PK.generate();
+            // re-use old session id (if provided) or generate unique ID
+            String id = currentId==null
+                    // disallow duplicates
+                    || rc.portals.containsKey(currentId) ?  PK.generate() :
+                    // mean that relay has been restarted and lost all sessions
+                    currentId;
             // check for portal name
             if (name == null || name.isEmpty()) {
                 // portal name is empty
@@ -866,12 +871,10 @@ public class TeleportaRelay {
                 respondAndClose(400, httpExchange);
                 return;
             }
-
             if (!params.containsKey("to") || !params.containsKey("file")) {
                 respondAndClose(400, httpExchange);
                 return;
             }
-
             final String to = PK.fromExternal(params.get("to")), // client portal
                     fileId = PK.fromExternal(params.get("file")); // file id
 
@@ -884,11 +887,9 @@ public class TeleportaRelay {
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.toFile", to, fileId));
             }
             final RuntimePortal p = rc.portals.get(to);
-
             // external form is used for files/folders stored on disk
             final File toFolder = new File(rc.storageDir, PK.toExternal(to)),
                     rFile = new File(toFolder, String.format("f_%s%s", PK.toExternal(fileId), EXT_FILE));
-
             if (!isAcceptable(rFile,true)) {
                 // stored file not found
                 LOG.warning(TeleportaError.messageFor(0x6114,
@@ -904,7 +905,6 @@ public class TeleportaRelay {
                 for (int n = fin.read(buffer); n >= 0; n = fin.read(buffer)) {
                     // mark 'last seen online'
                     p.lastSeen = System.currentTimeMillis();
-
                     out.write(buffer, 0, n);
                     out.flush();
                 }
@@ -920,6 +920,7 @@ public class TeleportaRelay {
                     LOG.warning(TeleportaError.messageFor(0x6106,
                             rFile.getAbsolutePath()));
                 }
+                httpExchange.close();
             }
         }
     }
