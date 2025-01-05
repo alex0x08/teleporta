@@ -73,7 +73,7 @@ public class EmbeddedClient extends AbstractClient {
         if (ctx.allowOutgoing)
             if (outputDir.exists() && outputDir.isDirectory()) {
                 if (ctx.clearOutgoing)
-                    deleteRecursive(outputDir, false);
+                    deleteRecursive(outputDir, false,null);
 
             } else {
                 checkCreateFolder(outputDir);
@@ -367,7 +367,7 @@ public class EmbeddedClient extends AbstractClient {
                 LOG.warning(TeleportaError.messageFor(0x6106,
                         file.getAbsolutePath()));
             else if (file.isDirectory())
-                deleteRecursive(file, true);
+                deleteRecursive(file, true,null);
 
         }
     }
@@ -433,7 +433,7 @@ public class EmbeddedClient extends AbstractClient {
                                     out.getAbsolutePath()));
 
                         if (out.isDirectory())
-                            deleteRecursive(out, true);
+                            deleteRecursive(out, true,null);
 
                         continue;
                     }

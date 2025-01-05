@@ -81,7 +81,7 @@ public class TeleportaRelay {
         // get relay home folder
         final File teleportaHome = checkCreateHomeFolder("teleporta-relay");
         if (clearOutgoing) {
-            deleteRecursive(teleportaHome, false);
+            deleteRecursive(teleportaHome, false,null);
         }
         // We need to detect own jar location and pass full path 
         // as global variable to 'RespondSelfHandler'
@@ -1130,7 +1130,7 @@ public class TeleportaRelay {
                 final RegisteredPortal p = rc.portals.remove(k);
                 rc.portalNames.remove(p.name);
                 // remove non-delivered files for expired portals
-                deleteRecursive(new File(rc.storageDir, p.name), true);
+                deleteRecursive(new File(rc.storageDir, p.name), true,EXT_FILE);
                 if (LOG.isLoggable(Level.FINE))
                     LOG.fine(TeleportaMessage.of("teleporta.system.message.removedExpiredPortal", p.name));
 

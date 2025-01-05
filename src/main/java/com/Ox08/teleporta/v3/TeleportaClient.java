@@ -112,7 +112,7 @@ public class TeleportaClient extends AbstractClient{
         if (allowOutgoing) {
             if (outputDir.exists() && outputDir.isDirectory()) {
                 if (clearOutgoing)
-                    deleteRecursive(outputDir, false);
+                    deleteRecursive(outputDir, false,null);
 
             } else
                 checkCreateFolder(outputDir);
@@ -224,7 +224,8 @@ public class TeleportaClient extends AbstractClient{
 
                 // if there are pending files - try to download them
                 if (files != null) {
-                    if (LOG.isLoggable(Level.FINE))
+                    if (LOG.isLoggable(Level.FINE)
+                            && files.length>ctx.downloadingFiles.size())
                         LOG.fine(TeleportaMessage
                                 .of("teleporta.system.message.foundPendingFiles", files.length));
 
@@ -402,7 +403,7 @@ public class TeleportaClient extends AbstractClient{
 
                 // delete all pending files
                 // note: probably wrong, do we need to keep these?
-                deleteRecursive(f, true);
+                deleteRecursive(f, true,null);
                 if (LOG.isLoggable(Level.FINE))
                         LOG.fine(TeleportaMessage
                                 .of("teleporta.system.message.removedExpiredPortal", n));
@@ -582,7 +583,7 @@ public class TeleportaClient extends AbstractClient{
                 LOG.warning(TeleportaError.messageFor(0x6106,
                         file.getAbsolutePath()));
             else if (file.isDirectory())
-                deleteRecursive(file, true);
+                deleteRecursive(file, true,null);
 
             if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.fileSent",
@@ -719,7 +720,7 @@ public class TeleportaClient extends AbstractClient{
                                     out.getAbsolutePath()));
 
                         if (out.isDirectory())
-                            deleteRecursive(out, true);
+                            deleteRecursive(out, true,null);
 
                         continue;
                     }

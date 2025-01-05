@@ -170,9 +170,11 @@ public class TeleportaCommons {
      *          folder or file to remove
      * @param removeParent
      *          if true - also removes specified folder, otherwise - just inner content
+     * @param ext
+     *          file extension, if not null - this file will be skipped
      */
-    public static void deleteRecursive(File file, boolean removeParent) {
-        if (file.isFile()) {
+    public static void deleteRecursive(File file, boolean removeParent,String ext) {
+        if (file.isFile() && (ext==null || !file.getName().toLowerCase().endsWith(ext))) {
             if (!file.delete())
                 // cannot delete file
                 LOG.warning(TeleportaError.messageFor(0x6106,
@@ -187,6 +189,7 @@ public class TeleportaCommons {
         final File[] files = file.listFiles();
         // java allows to remove folder only if its empty
         if ((files == null || files.length == 0)) {
+            // this is actually folder removal
             if (!file.delete())
                 LOG.warning(TeleportaError.messageFor(0x6110,
                         file.getAbsolutePath()));
@@ -194,7 +197,7 @@ public class TeleportaCommons {
             return;
         }
         for (File f : files)
-            deleteRecursive(f, true);
+            deleteRecursive(f, true,ext);
 
         if (removeParent && !file.delete())
             LOG.warning(TeleportaError.messageFor(0x6110, file.getAbsolutePath()));
