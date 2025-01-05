@@ -101,9 +101,9 @@ public class TeleportaRelay {
         if (port==0) {
             port = findFreePort();
             // if free port not found - try default 8989
-            if (port == -1) {
+            if (port == -1)
                 port = 8989;
-            }
+
         }
         // create server
         final HttpServer server = HttpServer.create(new InetSocketAddress(port), 50);
@@ -139,22 +139,22 @@ public class TeleportaRelay {
                     allowClipboard,allowOutgoing,useLockFile,clearOutgoing,rc);
             ec = new EmbeddedClient(ectx);
             ec.init();
-        } else {
+        } else
             ec = null;
-        }
+
         // background task to remove expired portals
         ses.scheduleAtFixedRate(() -> {
            final Set<String> expired= removeExpired(rc);
            // second step - remove expired for embedded portal, if enabled
-           if (!expired.isEmpty() && ec!=null) {
+           if (!expired.isEmpty() && ec!=null)
                ec.removeExpired(expired);
-           }
+
         }, 120, 60, TimeUnit.SECONDS);
         // Use defined or generate seed
         final String seed = System.getProperty("seed", genSeed());
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.seed", seed));
-        }
+
         /*
          * Register handlers for endpoints
          */
@@ -644,7 +644,7 @@ public class TeleportaRelay {
 
                 // build target file, but with .DAT extension
                 final File dat_out = new File(out.getParentFile(),
-                        out.getName().substring(0,EXT_UPLOAD.length())+EXT_FILE);
+                        out.getName().substring(0, out.getName().length() - EXT_UPLOAD.length())+EXT_FILE);
                 if (dat_out.exists() && !dat_out.delete()) {
                     LOG.warning(TeleportaError.messageFor(0x6107,
                             dat_out.getAbsolutePath()));
@@ -754,11 +754,10 @@ public class TeleportaRelay {
                 httpExchange.sendResponseHeaders(200, 0);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
-                    if (!out.delete()) {
+                    if (!out.delete())
                         // cannot delete file
                         LOG.warning(TeleportaError.messageFor(0x6106,
                                 out.getAbsolutePath()));
-                    }
 
                 //  respond 500 with no data
                 respondAndClose(500, httpExchange);
@@ -794,9 +793,9 @@ public class TeleportaRelay {
                 respondAndClose(400, httpExchange);
                 return;
             }
-            if (LOG.isLoggable(Level.FINE)) {
+            if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.to", to));
-            }
+
             if (!rc.portals.containsKey(to)) {
                 // portal not found error
                 LOG.warning(TeleportaError.messageFor(0x6108, to));
@@ -850,9 +849,9 @@ public class TeleportaRelay {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             } finally {
                 // file removal is fast, no need to detach in dedicated thread
-                if (!rFile.delete()) {
+                if (!rFile.delete())
                     LOG.warning(TeleportaError.messageFor(0x6106, rFile.getAbsolutePath()));
-                }
+
             }
         }
     }
@@ -883,9 +882,9 @@ public class TeleportaRelay {
                 respondAndClose(400, httpExchange);
                 return;
             }
-            if (LOG.isLoggable(Level.FINE)) {
+            if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.toFile", to, fileId));
-            }
+
             final RuntimePortal p = rc.portals.get(to);
             // external form is used for files/folders stored on disk
             final File toFolder = new File(rc.storageDir, PK.toExternal(to)),
@@ -916,10 +915,10 @@ public class TeleportaRelay {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             } finally {
                 // file removal is fast, no need to detach in dedicated thread
-                if (!rFile.delete()) {
+                if (!rFile.delete())
                     LOG.warning(TeleportaError.messageFor(0x6106,
                             rFile.getAbsolutePath()));
-                }
+
                 httpExchange.close();
             }
         }
@@ -941,13 +940,13 @@ public class TeleportaRelay {
          * @return key-value pairs with provided params
          */
         Map<String, String> getQueryParams(URI u) {
-            if (u == null || u.getQuery() == null) {
+            if (u == null || u.getQuery() == null)
                 return Collections.emptyMap();
-            }
+
             final String query = u.getQuery().toLowerCase().trim();
-            if (query.isEmpty()) {
+            if (query.isEmpty())
                 return Collections.emptyMap();
-            }
+
             final Map<String, String> qp = new LinkedHashMap<>();
             final String[] pairs = query.split("&");
             for (String pair : pairs) {
@@ -1121,9 +1120,9 @@ public class TeleportaRelay {
         for (String k : rc.portals.keySet()) {
             final RuntimePortal p = rc.portals.get(k);
             // check for other portals expiration
-            if (System.currentTimeMillis() - p.lastSeen > rc.limits.portalExpireTimeout) {
+            if (System.currentTimeMillis() - p.lastSeen > rc.limits.portalExpireTimeout)
                 expired.add(k);
-            }
+
         }
         // remove local folders for expired portals
         if (!expired.isEmpty()) {
@@ -1132,9 +1131,9 @@ public class TeleportaRelay {
                 rc.portalNames.remove(p.name);
                 // remove non-delivered files for expired portals
                 deleteRecursive(new File(rc.storageDir, p.name), true);
-                if (LOG.isLoggable(Level.FINE)) {
+                if (LOG.isLoggable(Level.FINE))
                     LOG.fine(TeleportaMessage.of("teleporta.system.message.removedExpiredPortal", p.name));
-                }
+
             }
             // notify all other about removal
             for (String k : rc.portals.keySet()) {
@@ -1146,21 +1145,21 @@ public class TeleportaRelay {
         //  which not yet delivered
         for (String k : rc.portalNames.keySet()) {
             final File relayParent = new File(rc.storageDir, k);
-            if (!relayParent.exists() || !relayParent.isDirectory()) {
+            if (!relayParent.exists() || !relayParent.isDirectory())
                 continue;
-            }
+
             // note: we limit number of processed files on each iteration
             // because there could be too many of them
             try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(relayParent.toPath())) {
                 int fileCounter = 1;
                 for (Path e : dirStream) {
-                    if (fileCounter > FILES_BULK_LIMIT) {
+                    if (fileCounter > FILES_BULK_LIMIT)
                         break;
-                    }
+
                     // ignore files not related to Teleporta
-                    if (!e.toString().toLowerCase().endsWith(EXT_FILE)) {
+                    if (!e.toString().toLowerCase().endsWith(EXT_FILE))
                         continue;
-                    }
+
                     final File f = e.toFile();
                     // check for file expiration
                     if (System.currentTimeMillis() - f.lastModified() > rc.limits.nonDeliveredExpire) {
@@ -1169,10 +1168,10 @@ public class TeleportaRelay {
                                     f.getAbsolutePath()));
                             continue;
                         } else {
-                            if (LOG.isLoggable(Level.FINE)) {
+                            if (LOG.isLoggable(Level.FINE))
                                 LOG.fine(TeleportaMessage.of("teleporta.system.message.removedExpiredNonDeliveredFile",
                                         f.getAbsolutePath()));
-                            }
+
                         }
                     }
                     fileCounter++;
@@ -1186,10 +1185,10 @@ public class TeleportaRelay {
 
     static String generateUrl(String seed, String part) {
         final String url = buildServerUrl(seed, part);
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage
                     .of("teleporta.system.message.urlDerivedPart", url, part));
-        }
+
         return String.format("/%s/%s", seed, url);
     }
     /**

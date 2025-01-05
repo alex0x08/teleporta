@@ -19,13 +19,12 @@ import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
 
 import static com.Ox08.teleporta.v3.TeleportaCommons.*;
 import static com.Ox08.teleporta.v3.services.TeleFilesWatch.isAcceptable;
@@ -39,7 +38,9 @@ import static com.Ox08.teleporta.v3.services.TeleFilesWatch.isAcceptable;
 public class TeleportaClient extends AbstractClient{
 
     // shared executor, used for parallel files download
-    private static final ScheduledExecutorService ses = Executors.newScheduledThreadPool(11);
+    private static final ScheduledExecutorService ses = Executors.newScheduledThreadPool(1);
+    private static final ExecutorService es = Executors.newFixedThreadPool(10);
+
     private TeleClipboard clip;
     private final ClientRuntimeContext ctx;
     private boolean pollRunning,  // if poll enabled and running
@@ -94,9 +95,9 @@ public class TeleportaClient extends AbstractClient{
         relayUrl = relayUrl
                 .replaceAll("\\s+","");
         // remove dot, if found as last element
-        if (relayUrl.endsWith(".")) {
+        if (relayUrl.endsWith("."))
             relayUrl = relayUrl.substring(0,relayUrl.length()-1);
-        }
+
         // create teleporta client's home folder
         final File teleportaHome = checkCreateHomeFolder("teleporta"),
                 inputDir = new File(teleportaHome, TeleportaMessage.of("teleporta.folder.from")), // for incoming files
@@ -110,20 +111,20 @@ public class TeleportaClient extends AbstractClient{
 
         if (allowOutgoing) {
             if (outputDir.exists() && outputDir.isDirectory()) {
-                if (clearOutgoing) {
+                if (clearOutgoing)
                     deleteRecursive(outputDir, false);
-                }
-            } else {
+
+            } else
                 checkCreateFolder(outputDir);
-            }
+
         }
         // do we need to create desktop link?
         final boolean createDesktopLink =
                 Boolean.parseBoolean(System.getProperty("createDesktopLink", "true"));
         // no need to create desktop link if we're on headless system
-        if (createDesktopLink ) {
+        if (createDesktopLink )
            createDesktopLink(teleportaHome);
-        }
+
         final boolean respondVersion =
                 Boolean.parseBoolean(System.getProperty("respondVersion", "true"));
         // build teleporta client context
@@ -140,18 +141,18 @@ public class TeleportaClient extends AbstractClient{
             System.exit(1);
             return;
         }
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage
                     .of("teleporta.system.message.portalRegistered", ctx.sessionId));
-        }
+
         // load portals list, don't touch watches initially, because output folder should be empty
         c.reloadPortals(false);
         // register watchers for each portal
         if (ctx.allowOutgoing && !ctx.portalNames.isEmpty()) {
             // if we're not cleaning outgoing - try to send all non-delivered files first
-            if (!clearOutgoing) {
+            if (!clearOutgoing)
                 c.sendAllNotDelivered(outputDir,ctx.useLockFile);
-            }
+
             // create watchers for each registered portal
             for (String n : ctx.portalNames.keySet()) {
                     final File f = new File(outputDir, n);
@@ -164,9 +165,9 @@ public class TeleportaClient extends AbstractClient{
             // register handler for new file events
             c.watch.registerHandler((files, receiver_name) -> {
                 // pause transfer attempts if there is network error
-                if(c.networkError) {
+                if(c.networkError)
                     return;
-                }
+
                 // check if portal exists on client side first
                 if (!ctx.portalNames.containsKey(receiver_name)) {
                     // unknown portal
@@ -178,10 +179,10 @@ public class TeleportaClient extends AbstractClient{
                 try {
                     for (File f : files) {
                         // don't react if there is network error
-                        if (c.networkError) {
+                        if (c.networkError)
                             break;
-                        }
-                        ses.submit(() -> {
+
+                        es.submit(() -> {
                             try {
                                 c.sendFile(f, id);
                             } catch (IOException e) {
@@ -198,23 +199,23 @@ public class TeleportaClient extends AbstractClient{
             c.watch.start();
         }
         // if work with clipboard is enabled - start it
-        if (c.clip != null) {
+        if (c.clip != null)
             c.clip.start();
-        }
+
         c.pollRunning = true;
         // schedule poll for incoming files
         ses.scheduleAtFixedRate(() -> {
             // check if poll stopped
-            if (!c.pollRunning) {
+            if (!c.pollRunning)
                 return;
-            }
+
             try {
                 // get pending files
                 final String[] files = c.getPending();
                 // if there was no 'connection error' raised - remove 'network error' mark
-                if (c.networkError) {
+                if (c.networkError)
                     c.networkError = false; // first successful request turns this switch off
-                }
+
 
                 if (c.requireResend) {
                     c.requireResend = false;
@@ -223,17 +224,17 @@ public class TeleportaClient extends AbstractClient{
 
                 // if there are pending files - try to download them
                 if (files != null) {
-                    if (LOG.isLoggable(Level.FINE)) {
+                    if (LOG.isLoggable(Level.FINE))
                         LOG.fine(TeleportaMessage
                                 .of("teleporta.system.message.foundPendingFiles", files.length));
-                    }
+
                     // there could be only *few* files always, no need for dir streaming
                     for (String file : files) {
-                        if (ctx.downloadingFiles.contains(file)) {
+                        if (ctx.downloadingFiles.contains(file))
                             return;
-                        }
+
                         ctx.downloadingFiles.add(file);
-                        ses.submit(() -> {
+                        es.submit(() -> {
                             try {
                                 c.downloadFile(file);
                             } catch (IOException e) {
@@ -246,18 +247,18 @@ public class TeleportaClient extends AbstractClient{
                 }
             } catch (IOException e) {
                 // don't log all the time
-                if (c.networkError) {
+                if (c.networkError)
                     return;
-                } else {
-                    // put 'network error' mark on any exception
-                    c.networkError = true;
-                    c.requireResend = true;
-                }
-                if (LOG.isLoggable(Level.FINE)) {
+
+                // put 'network error' mark on any exception
+                c.networkError = true;
+                c.requireResend = true;
+
+                if (LOG.isLoggable(Level.FINE))
                     LOG.log(Level.FINE, e.getMessage(), e);
-                } else {
+                else
                     LOG.warning(e.getMessage());
-                }
+
             }
         }, 0, 5, TimeUnit.SECONDS);
 
@@ -290,9 +291,9 @@ public class TeleportaClient extends AbstractClient{
                 register();
                 reloadPortals(true);
             }
-            if (LOG.isLoggable(Level.FINE)) {
+            if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaError.messageFor(0x7002, code));
-            }
+
             return null;
         }
         final Properties props = new Properties();
@@ -319,24 +320,24 @@ public class TeleportaClient extends AbstractClient{
             http.disconnect();
         }
         // no properties at all - means no pending files and no additional commands - just return null
-        if (props.isEmpty()) {
+        if (props.isEmpty())
             return null;
-        }
+
         // if there is 'reload portals' mark, the client needs to re-fetch list of registered portals
         // from relay.
         // this used, when new portal registers and relay need to warn all other portals
-        if (props.containsKey("reloadPortals")) {
+        if (props.containsKey("reloadPortals"))
             reloadPortals(true);
-        }
+
         // check for 'clipboard update' mark, if presents - portal need to
         // download updated clipboard data from relay
-        if (props.containsKey("updateClipboard")) {
+        if (props.containsKey("updateClipboard"))
             downloadClipboard();
-        }
+
         // if there is no 'files' property - just respond null
-        if (!props.containsKey("files")) {
+        if (!props.containsKey("files"))
             return null;
-        }
+
         // finally, if there is 'files' field, split it by ',' and respond as array
         // if there is no ',' - array with single item will be returned.
         return props.getProperty("files").split(",");
@@ -351,16 +352,16 @@ public class TeleportaClient extends AbstractClient{
     public void reloadPortals(boolean updateWatcher) throws IOException {
         final Properties portals = getPortals();
         // do we need to throw exception there?
-        if (portals==null ||portals.isEmpty()) {
+        if (portals==null ||portals.isEmpty())
             return;
-        }
+
         int total = Integer.parseInt(portals.getProperty("total","0"));
-        if (total<=0) {
+        if (total<=0)
             return;
-        }
-        if (LOG.isLoggable(Level.FINE)) {
+
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.foundPortals", total));
-        }
+
         final File outputDir = new File(ctx.storageDir, TeleportaMessage.of("teleporta.folder.to"));
         final Set<String> prevPortals = new HashSet<>(ctx.portalNames.keySet());
         ctx.portals.clear();
@@ -370,9 +371,9 @@ public class TeleportaClient extends AbstractClient{
                     name = portals.getProperty(String.format("portal.%d.name", t),null),
                     publicKey = portals.getProperty(String.format("portal.%d.publicKey", t),null);
             // ignore broken record
-            if (id==null || name == null || publicKey == null) {
+            if (id==null || name == null || publicKey == null)
                 continue;
-            }
+
             ctx.portals.put(id, new TeleportaCommons.RegisteredPortal(name, publicKey));
             ctx.portalNames.put(name, id);
 
@@ -383,29 +384,29 @@ public class TeleportaClient extends AbstractClient{
             }
         }
         if (ctx.allowOutgoing && updateWatcher && !ctx.portalNames.isEmpty()) {
-            if (LOG.isLoggable(Level.FINE)) {
+            if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.updatingFolderWatchers",
                         ctx.portalNames.size()));
-            }
+
             // check for portals that are not present on relay anymore
             for (String n : prevPortals) {
                 // if previously registered portal presents in updated set - skip
-                if (ctx.portalNames.containsKey(n)) {
+                if (ctx.portalNames.containsKey(n))
                     continue;
-                }
+
                 // remove portal's folder monitoring
                 final File f = new File(outputDir, n);
                 final Path p = f.toPath();
-                if (watch!=null && watch.isWatching(p)) {
+                if (watch!=null && watch.isWatching(p))
                     watch.unregister(p);
-                }
+
                 // delete all pending files
                 // note: probably wrong, do we need to keep these?
                 deleteRecursive(f, true);
-                if (LOG.isLoggable(Level.FINE)) {
+                if (LOG.isLoggable(Level.FINE))
                         LOG.fine(TeleportaMessage
                                 .of("teleporta.system.message.removedExpiredPortal", n));
-                    }
+
             }
 
         }
@@ -464,10 +465,10 @@ public class TeleportaClient extends AbstractClient{
      * @throws IOException on i/o errors
      */
     public void sendClipboard(String data) throws IOException {
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage
                     .of("teleporta.system.message.sendingClipboard", data.length()));
-        }
+
         final String part = decodeUrl(ctx.relayUrl, "cb-upload");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?from=%s",
                 ctx.relayUrl.getPath(),
@@ -502,9 +503,9 @@ public class TeleportaClient extends AbstractClient{
             http.disconnect();
             return;
         }
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardSent", data.length()));
-        }
+
         http.disconnect();
     }
 
@@ -516,16 +517,16 @@ public class TeleportaClient extends AbstractClient{
      * @throws IOException on i/o errors
      */
     public void sendFile(File file, String receiverId) throws IOException {
-        if (networkError) {
+        if (networkError)
             return;
-        }
-        if (ctx.processingFiles.contains(file.getAbsolutePath())) {
+
+        if (ctx.processingFiles.contains(file.getAbsolutePath()))
             return;
-        }
-        if (LOG.isLoggable(Level.FINE)) {
+
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.sendingFile",
                     file.getAbsolutePath()));
-        }
+
         final String part = decodeUrl(ctx.relayUrl, "file-upload");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?from=%s&to=%s",
                 ctx.relayUrl.getPath(),
@@ -557,13 +558,13 @@ public class TeleportaClient extends AbstractClient{
             props.store(zout, "");
             zout.putNextEntry(new ZipEntry(ENTRY_DATA));
             // stream directory right into network stream!
-            if (file.isDirectory()) {
+            if (file.isDirectory())
                 tc.encryptFolder(key,file,zout);
-            } else {
+            else
                 try (FileInputStream in = new FileInputStream(file)){
                     tc.encryptData(key, in, zout);
                 }
-            }
+
             zout.closeEntry();
             zout.flush();
             // must be called!
@@ -577,23 +578,22 @@ public class TeleportaClient extends AbstractClient{
                 } catch (Exception ignore) {}
                 return;
             }
-            if (file.isFile() && !file.delete()) {
+            if (file.isFile() && !file.delete())
                 LOG.warning(TeleportaError.messageFor(0x6106,
                         file.getAbsolutePath()));
-            } else if (file.isDirectory()) {
+            else if (file.isDirectory())
                 deleteRecursive(file, true);
-            }
-            if (LOG.isLoggable(Level.FINE)) {
+
+            if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.fileSent",
                         file.getAbsolutePath()));
-            }
+
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             // Error creating session key
             throw TeleportaError.withError(0x7213,e);
         } finally {
             ctx.processingFiles.remove(file.getAbsolutePath());
             http.disconnect();
-
         }
     }
 
@@ -603,9 +603,9 @@ public class TeleportaClient extends AbstractClient{
      * @throws IOException on i/o errors
      */
     public void downloadClipboard() throws IOException {
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.downloadingClipboard"));
-        }
+
         final String part = decodeUrl(ctx.relayUrl, "cb-download");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?to=%s",
                 ctx.relayUrl.getPath(),
@@ -650,9 +650,9 @@ public class TeleportaClient extends AbstractClient{
      * @throws IOException on I/O errors
      */
     public void downloadFile(String fileId) throws IOException {
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.downloadingFile",fileId));
-        }
+
         final String part = decodeUrl(ctx.relayUrl, "file-download");
         final URL u = new URL(ctx.relayUrl, String.format("%s/%s?to=%s&file=%s",
                 ctx.relayUrl.getPath(),
@@ -671,9 +671,9 @@ public class TeleportaClient extends AbstractClient{
         }
         // content size
         final long fsize = http.getContentLengthLong();
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(String.format("File %s ,size: %d",fileId,fsize));
-        }
+
         final Properties props = new Properties();
         // we do unpack & decrypt on the fly, without any temp files
         try (InputStream in  = http.getInputStream();
@@ -683,9 +683,9 @@ public class TeleportaClient extends AbstractClient{
 
             for (ZipEntry ze; (ze = zin.getNextEntry()) != null; ) {
                 // don't process folders or broken names
-                if (ze.isDirectory() || ze.getName().isEmpty()) {
+                if (ze.isDirectory() || ze.getName().isEmpty())
                     continue;
-                }
+
                 // note on order:
                 // we read zip in exactly same order as
                 // we create it, so there is no case when file content
@@ -713,14 +713,14 @@ public class TeleportaClient extends AbstractClient{
                     final File out = new File(f, name);
                     // if it's already exist - delete
                     if (out.exists()) {
-                        if (out.isFile() && !out.delete()) {
+                        if (out.isFile() && !out.delete())
                             //cannot delete existing file
                             LOG.warning(TeleportaError.messageFor(0x6106,
                                     out.getAbsolutePath()));
-                        }
-                        if (out.isDirectory()) {
+
+                        if (out.isDirectory())
                             deleteRecursive(out, true);
-                        }
+
                         continue;
                     }
                     // decrypt AES session key
@@ -745,10 +745,10 @@ public class TeleportaClient extends AbstractClient{
                             break;
                         }
                     }
-                    if (LOG.isLoggable(Level.FINE)) {
+                    if (LOG.isLoggable(Level.FINE))
                         LOG.fine(TeleportaMessage.of("teleporta.system.message.fileDownloaded",
                                 out.getAbsolutePath()));
-                    }
+
                 }
             }
         } finally {
@@ -780,9 +780,9 @@ public class TeleportaClient extends AbstractClient{
         props.setProperty("name", portalName);
         props.setProperty("publicKey",
                 toHex(ctx.keyPair.getPublic().getEncoded(), 0, 0));
-        if (ctx.sessionId!=null) {
+        if (ctx.sessionId!=null)
             props.setProperty("currentId", ctx.sessionId);
-        }
+
 
         boolean privateRelay = false;
         final String relayKey;
@@ -808,9 +808,9 @@ public class TeleportaClient extends AbstractClient{
             // try parse it
             relayKey = parseRelayPublicKey(Files.readAllBytes(k.toPath()));
 
-            if (LOG.isLoggable(Level.FINE)) {
+            if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.parsedRelayKey",relayKey));
-            }
+
             try {
                 // decode public key
                 final PublicKey relayPublicKey = tc.restorePublicKey(fromHex(relayKey));
@@ -826,9 +826,9 @@ public class TeleportaClient extends AbstractClient{
             } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
                 throw TeleportaError.withError(0x6004, e);
             }
-        } else {
+        } else
             relayKey = null;
-        }
+
         // respond without encryption - to transfer relay's public key
         try (OutputStream os = http.getOutputStream()) {
             props.store(os, "");
@@ -838,9 +838,9 @@ public class TeleportaClient extends AbstractClient{
         int code = http.getResponseCode();
         // check HTTP status
         if (code != HttpURLConnection.HTTP_OK) {
-            if (LOG.isLoggable(Level.FINE)) {
+            if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaError.messageFor(0x7002,code));
-            }
+
             http.disconnect();
             return false;
         }
@@ -851,16 +851,16 @@ public class TeleportaClient extends AbstractClient{
         }
         // load and display 'Message of the day'
         final String motd = resp.getProperty("motd",null);
-        if (motd!=null) {
+        if (motd!=null)
            System.out.println(motd);
-        }
+
         // reflect with context
         ctx.sessionId = resp.getProperty("id", null);
         // if relay is private - just copy already loaded key to context,
         // because private relay will not publish own public key
-        if (privateRelay) {
+        if (privateRelay)
             ctx.relayPublicKey = relayKey;
-        } else {
+        else {
             // for non-private relays - copy key from relay response
             ctx.relayPublicKey = resp.getProperty("publicKey", null);
             if (ctx.relayPublicKey == null || ctx.relayPublicKey.isEmpty()) {
@@ -887,39 +887,39 @@ public class TeleportaClient extends AbstractClient{
      *          if true - check for 'lock' file
      */
     private void sendAllNotDelivered(File outputDir, boolean useLockFile) {
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.sendNonDeliveredFiles"));
-        }
+
         for (String n : ctx.portalNames.keySet()) {
             // get remote portal's id
             final String id = ctx.portalNames.get(n);
             final File f = new File(outputDir, n);
             // if there is *still* no watched folder for this target portal - ignore
-            if (!f.exists() || !f.isDirectory() || !f.canRead()) {
+            if (!f.exists() || !f.isDirectory() || !f.canRead())
                 continue;
-            }
+
             // check for 'lock' file if enabled
             if (useLockFile) {
                 final File lock = new File(f,TeleportaMessage.of("teleporta.service.fileWatch.lockFile"));
-                if (lock.exists()) {
+                if (lock.exists())
                     continue;
-                }
             }
             // because there could be a lot of files, we use streaming instead of common File.list(), which is slow
             try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(f.toPath())) {
                 for (Path e : dirStream) {
                     final File ff = e.toFile();
-                    if (!isAcceptable(ff,false)) {
+                    if (!isAcceptable(ff,false))
                         // ignore non-existent or non-readable
                         // ( possibly deleted before trigger happens )
                         continue;
-                    }
-                    // note: probably wrong, but we transfer pending files one by one on start
-                    try {
-                        sendFile(ff, id);
-                    } catch (IOException ee) {
-                        LOG.warning(TeleportaError.messageFor(0x7006,ee));
-                    }
+
+                    es.submit(() -> {
+                        try {
+                            sendFile(ff, id);
+                        } catch (IOException ee) {
+                            LOG.warning(TeleportaError.messageFor(0x7006,ee));
+                        }
+                    });
                 }
             } catch (IOException e) {
                 LOG.warning(TeleportaError.messageFor(0x7006,e));

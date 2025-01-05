@@ -23,9 +23,9 @@ public class TeleClipboard {
         listener = new TeleFlavorListener();
         handler = h;
         this.cb = Toolkit.getDefaultToolkit().getSystemClipboard();
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardEnabled"));
-        }
+
     }
     /**
      * Must be synchronized, due to clipboard nature
@@ -33,10 +33,10 @@ public class TeleClipboard {
      *          updated clipboard text data
      */
     public synchronized void setClipboard(String data) {
-        if (data==null || data.isEmpty()) {
+        if (data==null || data.isEmpty())
             // do not react on empty clipboard, ever
             return;
-        }
+
         if (data.length() > MAX_CLIPBOARD_LEN) {
             // clipboard data overload
             LOG.warning(TeleportaError.messageFor(0x7223,data.length(), MAX_CLIPBOARD_LEN));
@@ -47,9 +47,9 @@ public class TeleClipboard {
     }
     public synchronized void start() {
         cb.addFlavorListener(listener);
-        if (LOG.isLoggable(Level.FINE)) {
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardStarted"));
-        }
+
     }
     public synchronized void stop() {
         cb.removeFlavorListener(listener);
@@ -72,19 +72,18 @@ public class TeleClipboard {
             if (cb.isDataFlavorAvailable(DataFlavor.stringFlavor)) {
                 try {
                     final String data = cb.getData(DataFlavor.stringFlavor).toString();
-                    if (data==null || data.isEmpty()) {
-                        return;
-                    }
+                    //disallow processing for empty data
+                    if (data==null || data.isEmpty()) return;
+
                     if (data.length() > MAX_CLIPBOARD_LEN) {
                         LOG.warning(TeleportaError.messageFor(0x7223,data.length(), MAX_CLIPBOARD_LEN));
                         return;
                     }
-                    if (LOG.isLoggable(Level.FINE)) {
+                    if (LOG.isLoggable(Level.FINE))
                         LOG.fine(String.format(TeleportaMessage.of(
                                 "teleporta.system.message.receivedClipboard", data.length())));
-                    }
-                    handler.handle(data);
 
+                    handler.handle(data);
                 } catch (UnsupportedFlavorException | IOException ex) {
                     LOG.log(Level.WARNING, ex.getMessage(), ex);
                 }

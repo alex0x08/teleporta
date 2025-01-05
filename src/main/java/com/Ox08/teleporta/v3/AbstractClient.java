@@ -44,9 +44,9 @@ public abstract class AbstractClient {
      */
     protected static void createDesktopLink(File teleportaHome) {
         // don't try in headless mode, means that we're on server
-        if (GraphicsEnvironment.isHeadless()) {
+        if (GraphicsEnvironment.isHeadless())
             return;
-        }
+
         try {
             // this is small hack to detect user's home folder
             // works better than reading common environment variable
@@ -59,17 +59,17 @@ public abstract class AbstractClient {
             final File lnk = desktop.exists() && desktop.isDirectory() ?
                     new File(desktop, "Teleporta") :
                     new File(homeFolder, "Teleporta");
-            if (!lnk.exists()) {
+            if (!lnk.exists())
                 // for Windows, we need to create .lnk file manually,
                 // because createSymbolicLink is not allowed
                 // without Administrator permissions
-                if (isWindows()) {
+                if (isWindows())
                     TeleLnk.createLnkFor(teleportaHome.toPath(),
                             new File(lnk.getParent(), lnk.getName() + ".lnk"));
-                } else {
+                else
                     Files.createSymbolicLink(lnk.toPath(), teleportaHome.toPath());
-                }
-            }
+
+
         } catch (IOException ex) {
             LOG.log(Level.WARNING, ex.getMessage(), ex);
         }
@@ -95,9 +95,9 @@ public abstract class AbstractClient {
          * In some cases relay does not respond any data,
          * if allowEmpty is set - this is legit
          */
-        if (c <= 0 && allowEmpty) {
+        if (c <= 0 && allowEmpty)
             return null;
-        }
+
         // If we read less data than key size - key is broken
         // This is done for simplicity
         if (c != TeleCrypt.SESSION_KEY_LEN) {
@@ -123,13 +123,13 @@ public abstract class AbstractClient {
         // check for magic header
         final byte[] head = new byte[TELEPORTA_PACKET_HEADER.length];
         final int c = in.read(head);
-        if (c <= 0 && allowEmpty) {
+        if (c <= 0 && allowEmpty)
             return false; // stop next processing
-        }
+
         if (c != TELEPORTA_PACKET_HEADER.length||
-                !Arrays.equals(head,TELEPORTA_PACKET_HEADER)) {
+                !Arrays.equals(head,TELEPORTA_PACKET_HEADER))
             throw TeleportaError.withError(0x7018);
-        }
+
         return true; // process next
     }
     /**
@@ -150,9 +150,9 @@ public abstract class AbstractClient {
         // try name from environment
         String portalName = System.getProperty("portalName", null);
         // try hostname
-        if (portalName != null && !portalName.isEmpty()) {
+        if (portalName != null && !portalName.isEmpty())
             return portalName;
-        }
+
         final String hostName, userName = System.getProperty("user.name", "unknown");
         try {
             hostName = InetAddress.getLocalHost().getHostName();
@@ -161,17 +161,17 @@ public abstract class AbstractClient {
         }
         // if template defined - try it
         final String portalNameTemplate = System.getProperty("portalNameTemplate", null);
-        if (portalNameTemplate != null && !portalNameTemplate.isEmpty()) {
+        if (portalNameTemplate != null && !portalNameTemplate.isEmpty())
             portalName = portalNameTemplate
                     .replace("HOSTNAME", hostName)
                     .replace("USERNAME", userName);
-        } else {
+        else
             portalName = hostName;
-        }
+
         // send unnamed
-        if (portalName == null || portalName.isEmpty()) {
+        if (portalName == null || portalName.isEmpty())
             portalName = "Unnamed portal";
-        }
+
         return portalName;
     }
     /**

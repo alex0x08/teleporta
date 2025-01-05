@@ -56,19 +56,19 @@ public class TeleportaCommons {
      * @return seed, used to generate urls for endpoints
      */
     public static char[] extractSeed(String seed) {
-        if (seed == null || seed.isEmpty()) {
+        if (seed == null || seed.isEmpty())
             // cannot extract seed
             throw TeleportaError.withError(0x7215);
-        }
+
         seed = seed.toLowerCase().replaceAll("/", "");
-        if (seed.isEmpty()) {
+        if (seed.isEmpty())
             // second check that cannot extract seed
             throw TeleportaError.withError(0x7215);
-        }
+
         // remove random garbage first
-        if (seed.length() > 22) {
+        if (seed.length() > 22)
             seed = seed.substring(0, 22);
-        }
+
         return seed.toCharArray();
     }
     /**
@@ -141,9 +141,9 @@ public class TeleportaCommons {
     }
     public static String toHex(byte[] data, int from, int to) {
         final Formatter formatter = new Formatter();
-        for (int i = from; i < (to <= 0 ? data.length : to); i++) {
+        for (int i = from; i < (to <= 0 ? data.length : to); i++)
             formatter.format("%02x", data[i]);
-        }
+
         return formatter.toString();
     }
     public static File checkCreateHomeFolder(String prefix) {
@@ -152,16 +152,16 @@ public class TeleportaCommons {
             final String userHome = System.getProperty("user.home");
             teleportaHome = Paths.get(userHome, ".apps", prefix).toFile();
             checkCreateFolder(teleportaHome);
-        } else {
+        } else
             teleportaHome = new File(System.getProperty("appHome"));
-        }
+
         return teleportaHome;
     }
     public static void checkCreateFolder(File folder) {
-        if ((!folder.exists() || !folder.isDirectory()) && !folder.mkdirs()) {
+        if ((!folder.exists() || !folder.isDirectory()) && !folder.mkdirs())
             throw TeleportaError.withError(0x6109,
                             folder.getAbsolutePath());
-        }
+
     }
 
     /**
@@ -173,32 +173,32 @@ public class TeleportaCommons {
      */
     public static void deleteRecursive(File file, boolean removeParent) {
         if (file.isFile()) {
-            if (!file.delete()) {
+            if (!file.delete())
                 // cannot delete file
                 LOG.warning(TeleportaError.messageFor(0x6106,
                         file.getAbsolutePath()));
-            }
+
             return;
         }
-        if (!file.isDirectory()) {
+        if (!file.isDirectory())
             // could be a link also - skip it
             return;
-        }
+
         final File[] files = file.listFiles();
         // java allows to remove folder only if its empty
         if ((files == null || files.length == 0)) {
-            if (!file.delete()) {
+            if (!file.delete())
                 LOG.warning(TeleportaError.messageFor(0x6110,
                         file.getAbsolutePath()));
-            }
+
             return;
         }
-        for (File f : files) {
+        for (File f : files)
             deleteRecursive(f, true);
-        }
-        if (removeParent && !file.delete()) {
+
+        if (removeParent && !file.delete())
             LOG.warning(TeleportaError.messageFor(0x6110, file.getAbsolutePath()));
-        }
+
     }
 
     /**
@@ -237,9 +237,9 @@ public class TeleportaCommons {
         //       actually uses cp866
         try  {
             // contains because it can be cp1251 and windows-1251
-            if (isWindows() && Charset.defaultCharset().name().contains("1251")) {
+            if (isWindows() && Charset.defaultCharset().name().contains("1251"))
                 consoleHandler.setEncoding("cp866");
-            }
+
         } catch (UnsupportedEncodingException e) {
             throw TeleportaError.withError(0x600,e);
         }
@@ -277,16 +277,16 @@ public class TeleportaCommons {
          * @return
          */
         public static String fromExternal(String src) {
-            if (src==null ||src.isEmpty()) {
+            if (src==null ||src.isEmpty())
                 return null;
-            }
+
             // strictly forbid any symbols except numbers
             src = src.replaceAll("[^0-9]","");
 
             // strictly limit length
-            if (src.isEmpty() || src.length()>32) {
+            if (src.isEmpty() || src.length()>32)
                 return  null;
-            }
+
             return "PK_" + src;
         }
         /**
@@ -295,7 +295,8 @@ public class TeleportaCommons {
          * @return
          */
         public static String toExternal(String k) {
-            return (k==null|| k.isEmpty())? k : k.replaceAll("[^0-9]", "");
+            return (k==null|| k.isEmpty())? k :
+                    k.replaceAll("[^0-9]", "");
         }
     }
 

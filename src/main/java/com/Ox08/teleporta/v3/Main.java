@@ -30,9 +30,9 @@ public class Main {
                 for (Object k:props.keySet()) {
                     final Object v = props.get(k);
                     // set only non-defined properties
-                    if (System.getProperty(k.toString(),null) == null) {
+                    if (System.getProperty(k.toString(),null) == null)
                         System.setProperty(k.toString(),v.toString());
-                    }
+
                 }
                 configLoaded = true;
             }
@@ -51,9 +51,9 @@ public class Main {
             if (a.startsWith("-D") && a.length() > 2 && a.contains("=")) {
                 final String[] p = a.substring(2).split("=");
                 System.setProperty(p[0], p[1]);
-                if (!hasPropertiesSet) {
+                if (!hasPropertiesSet)
                     hasPropertiesSet = true;
-                }
+
                 continue;
             }
             cleaned.add(a);
@@ -97,9 +97,9 @@ public class Main {
         // do we need to show logo?
         final boolean showLogo = Boolean.parseBoolean(
                 System.getProperty("showLogo", "true"));
-        if (showLogo) {
+        if (showLogo)
             printLogo(relay);
-        }
+
         // clipboard needs to be enabled both on relay and portal sides
         final boolean enableClipboard =
                 Boolean.parseBoolean(System.getProperty("clipboard", "false"));
@@ -107,11 +107,11 @@ public class Main {
                 Boolean.parseBoolean(System.getProperty("clearOutgoing", "false"));
         final boolean relayHasPortal =
                 Boolean.parseBoolean(System.getProperty("relayHasPortal", "false"));
-        if (relay) {
+        if (relay)
             TeleportaRelay.init(enableClipboard,clearOutgoing,relayHasPortal);
-        } else {
+        else
             TeleportaClient.init(relayUrl, enableClipboard,clearOutgoing);
-        }
+
     }
 
     /**
@@ -123,9 +123,9 @@ public class Main {
         SystemInfo.SI.load();       
         final boolean showLogo = Boolean.parseBoolean(
                     System.getProperty("showLogo", "true"));
-        if (showLogo) {
+        if (showLogo)
                 printLogo(true);
-        }
+
         final boolean debugMessages = Boolean
                 .parseBoolean(System.getProperty("appDebug", "false"));
         // need to set in any case    
@@ -152,9 +152,9 @@ public class Main {
     static void setupLocale() {
         String lang = System.getProperty("lang",null);
         // ignore completely if switch is not set
-        if (lang==null || lang.isEmpty()) {
+        if (lang==null || lang.isEmpty())
             return;
-        }
+
         lang = lang.toLowerCase();
         // we support only Russian and English for now
         final Locale locale = lang.equals("ru") ? Locale.forLanguageTag("ru-RU") : Locale.US;

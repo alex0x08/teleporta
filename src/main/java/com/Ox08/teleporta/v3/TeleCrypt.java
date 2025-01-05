@@ -104,10 +104,10 @@ public class TeleCrypt {
         try {
             final byte[] fileIv = new byte[IV_LEN];
             // read stored IV
-            if (inputStream.read(fileIv)!=IV_LEN) {
+            if (inputStream.read(fileIv)!=IV_LEN)
                 // incorrect IV size
                 throw TeleportaError.withError(0x7012);
-            }
+
             final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
             final byte[] buffer = new byte[4096];
@@ -120,7 +120,7 @@ public class TeleCrypt {
             while ((bytesRead = cipherIn.read(buffer)) != -1) {
                     outputStream.write(buffer, 0, bytesRead);
                     if (LOG.isLoggable(Level.FINE) && cz!=null) {
-                      int p = cz.getPercent();
+                      final int p = cz.getPercent();
                       if (p % 10 == 0 && p != pp) {
                           LOG.fine(String.format("Downloading %s : %d%%",cz.getFileId(), p));
                           pp = p;
@@ -141,10 +141,10 @@ public class TeleCrypt {
         try {
             final byte[] fileIv = new byte[IV_LEN];
             // read stored IV
-            if (inputStream.read(fileIv)!=IV_LEN) {
+            if (inputStream.read(fileIv)!=IV_LEN)
                 // incorrect IV size
                 throw TeleportaError.withError(0x7012);
-            }
+
             final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
             // don't wrap in try-catch - don't close it there!
@@ -153,9 +153,9 @@ public class TeleCrypt {
             for (ZipEntry ze; (ze = zipIn.getNextEntry()) != null; ) {
                 final Path resolvedPath = zipFolder
                         .getParentFile().toPath().resolve(ze.getName());
-                if (ze.isDirectory()) {
+                if (ze.isDirectory())
                     Files.createDirectories(resolvedPath);
-                } else {
+                else {
                     Files.createDirectories(resolvedPath.getParent());
                     Files.copy(zipIn, resolvedPath);
                 }
@@ -200,7 +200,7 @@ public class TeleCrypt {
                 cipherOut.write(buffer, 0, bytesRead);
                 cipherOut.flush();
                 if (LOG.isLoggable(Level.FINE) && cz!=null) {
-                    int p = cz.getPercent();
+                    final int p = cz.getPercent();
                     if (p % 10 == 0 && p != pp) {
                         LOG.fine(String.format("Uploading %s : %d%%",cz.getFileId(), p));
                         pp = p;
@@ -285,10 +285,10 @@ public class TeleCrypt {
         try {
             final byte[] fileIv = new byte[IV_LEN];
             // read stored IV
-            if (inputStream.read(fileIv)!=IV_LEN) {
+            if (inputStream.read(fileIv)!=IV_LEN)
                 // incorrect IV size
                 throw TeleportaError.withError(0x7012);
-            }
+
             final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
             final Cipher cipher2 = Cipher.getInstance(SESSION_CYPHER);
