@@ -323,9 +323,15 @@ public class TeleCrypt {
      */
     public PublicKey restorePublicKey(byte[] data)
             throws NoSuchAlgorithmException, InvalidKeySpecException {
-        final KeyFactory publicKeyFactory = KeyFactory.getInstance(PK_CYPHER);
-        return publicKeyFactory.generatePublic(new X509EncodedKeySpec(data));
+        final KeyFactory kf = KeyFactory.getInstance(PK_CYPHER);
+        return kf.generatePublic(new X509EncodedKeySpec(data));
     }
+    public PrivateKey restorePrivateKey(byte[] data)
+            throws NoSuchAlgorithmException, InvalidKeySpecException {
+            final KeyFactory kf = KeyFactory.getInstance(PK_CYPHER);
+            return kf.generatePrivate(new X509EncodedKeySpec(data));
+    }
+
     /**
      * Generates AES key, used to encrypt file content
      * @return

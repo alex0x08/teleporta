@@ -38,10 +38,8 @@ import static com.Ox08.teleporta.v3.services.TeleFilesWatch.isAcceptable;
  * @since 1.0
  */
 public class TeleportaRelay {
-
     static final String EXT_UPLOAD = ".upload", // file being uploaded
                         EXT_FILE =".dat"; // file is stored on relay
-
     private final static Logger LOG = Logger.getLogger("TC");
     // single thread executor
     private final static ScheduledExecutorService ses = Executors.newScheduledThreadPool(1);

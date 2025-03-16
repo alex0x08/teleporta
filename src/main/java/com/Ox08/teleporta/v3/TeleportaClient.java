@@ -14,6 +14,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
@@ -56,7 +57,7 @@ public class TeleportaClient extends AbstractClient{
             clip = new TeleClipboard(data -> {
                 try {
                     sendClipboard(data);
-                } catch (IOException e) {
+                } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
                 }
             });
@@ -127,12 +128,13 @@ public class TeleportaClient extends AbstractClient{
 
         final boolean respondVersion =
                 Boolean.parseBoolean(System.getProperty("respondVersion", "true"));
-        // build teleporta client context
+
+            // build teleporta client context
         final ClientRuntimeContext ctx = new ClientRuntimeContext(new URL(relayUrl),
                 teleportaHome,
                 allowClipboard,
                 allowOutgoing,
-                useLockFile,respondVersion);
+                useLockFile,respondVersion,null);
         // build client
         final TeleportaClient c = new TeleportaClient(ctx);
         // register on relay
@@ -158,7 +160,7 @@ public class TeleportaClient extends AbstractClient{
                     final File f = new File(outputDir, n);
                     checkCreateFolder(f);
                     c.watch.register(f.toPath());
-                }
+            }
         }
         // don't register any watchers, if we're not allow to send anything
         if (ctx.allowOutgoing) {
@@ -185,7 +187,7 @@ public class TeleportaClient extends AbstractClient{
                         es.submit(() -> {
                             try {
                                 c.sendFile(f, id);
-                            } catch (IOException e) {
+                            } catch (Exception e) {
                                 c.requireResend = true;
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }
@@ -216,7 +218,6 @@ public class TeleportaClient extends AbstractClient{
                 if (c.networkError)
                     c.networkError = false; // first successful request turns this switch off
 
-
                 if (c.requireResend) {
                     c.requireResend = false;
                     c.sendAllNotDelivered(outputDir,ctx.useLockFile);
@@ -238,7 +239,8 @@ public class TeleportaClient extends AbstractClient{
                         es.submit(() -> {
                             try {
                                 c.downloadFile(file);
-                            } catch (IOException e) {
+                                // must catch all exceptions there!
+                            } catch (Exception e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             } finally {
                                 ctx.downloadingFiles.remove(file);
@@ -246,7 +248,7 @@ public class TeleportaClient extends AbstractClient{
                         });
                     }
                 }
-            } catch (IOException e) {
+            } catch (Exception e) {
                 // don't log all the time
                 if (c.networkError)
                     return;
@@ -411,6 +413,26 @@ public class TeleportaClient extends AbstractClient{
             }
 
         }
+    }
+    private KeyPair readSavedKeyPair(String savedKeyPairFile) throws IOException,
+            NoSuchAlgorithmException, InvalidKeySpecException {
+        if (savedKeyPairFile == null) {
+            return null;
+        }
+        final File k = new File(savedKeyPairFile);
+        if (!k.isFile() || !k.canRead()) {
+            //Provided relay key file is not readable:
+            TeleportaError.printErr(0x606, savedKeyPairFile);
+            return null;
+        }
+        // stupid check for completely incorrect key file
+        if (k.length() < 5 || k.length() > 4096) {
+            // Provided relay key file corrupt or empty
+            TeleportaError.printErr(0x6005, savedKeyPairFile);
+            return null;
+        }
+        // try parse it
+        return restoreKeyPair(Files.readAllBytes(k.toPath()));
     }
 
     /**
@@ -783,7 +805,6 @@ public class TeleportaClient extends AbstractClient{
                 toHex(ctx.keyPair.getPublic().getEncoded(), 0, 0));
         if (ctx.sessionId!=null)
             props.setProperty("currentId", ctx.sessionId);
-
 
         boolean privateRelay = false;
         final String relayKey;
