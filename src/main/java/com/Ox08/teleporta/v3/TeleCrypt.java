@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.security.*;
 import java.security.spec.EncodedKeySpec;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -329,7 +330,7 @@ public class TeleCrypt {
     public PrivateKey restorePrivateKey(byte[] data)
             throws NoSuchAlgorithmException, InvalidKeySpecException {
             final KeyFactory kf = KeyFactory.getInstance(PK_CYPHER);
-            return kf.generatePrivate(new X509EncodedKeySpec(data));
+            return kf.generatePrivate(new PKCS8EncodedKeySpec(data));
     }
 
     /**

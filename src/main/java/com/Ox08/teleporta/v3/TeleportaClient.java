@@ -49,7 +49,8 @@ public class TeleportaClient extends AbstractClient{
             requireResend;
     final TeleFilesWatch watch;
 
-    TeleportaClient(ClientRuntimeContext ctx) throws NoSuchAlgorithmException {
+    TeleportaClient(ClientRuntimeContext ctx) throws NoSuchAlgorithmException,
+            IOException, InvalidKeySpecException {
         this.ctx = ctx;
         this.tc = new TeleCrypt();
         // if clipboard monitoring is enabled - start it
@@ -65,7 +66,8 @@ public class TeleportaClient extends AbstractClient{
         // if we allow outgoing files - enable Folder Watch service
         this.watch = ctx.allowOutgoing ? new TeleFilesWatch(ctx.useLockFile) : null;
         // generate portal keys
-        this.ctx.keyPair = tc.generateKeys();
+        this.ctx.keyPair = ctx.savedKeyPair!=null ?
+                readSavedKeyPair(ctx.savedKeyPair) : tc.generateKeys();
     }
     /**
      * This is used only for testing
@@ -77,6 +79,7 @@ public class TeleportaClient extends AbstractClient{
         //  System.setProperty("relayKey","/opt/work/tmp/tele.pub");
         //System.setProperty("useLockFile", "true");
         System.setProperty("dumbWatcher", "true");
+        System.setProperty("savedKeys","/opt/work/tmp/tele-client.keys");
       //  System.setProperty("allowOutgoing","false");
         init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa",
                 true,false);
@@ -134,7 +137,8 @@ public class TeleportaClient extends AbstractClient{
                 teleportaHome,
                 allowClipboard,
                 allowOutgoing,
-                useLockFile,respondVersion,null);
+                useLockFile,respondVersion,
+                System.getProperty("savedKeys"));
         // build client
         final TeleportaClient c = new TeleportaClient(ctx);
         // register on relay
@@ -264,7 +268,6 @@ public class TeleportaClient extends AbstractClient{
 
             }
         }, 0, 5, TimeUnit.SECONDS);
-
     }
 
     /**
@@ -419,17 +422,23 @@ public class TeleportaClient extends AbstractClient{
         if (savedKeyPairFile == null) {
             return null;
         }
-        final File k = new File(savedKeyPairFile);
-        if (!k.isFile() || !k.canRead()) {
-            //Provided relay key file is not readable:
-            TeleportaError.printErr(0x606, savedKeyPairFile);
-            return null;
-        }
+        File k = new File(savedKeyPairFile);
+        boolean needGenerate=false;
+        if (!k.exists() || !k.isFile() || !k.canRead()) {
+                TeleportaError.printErr(0x606, savedKeyPairFile);
+                //Provided relay key file is not readable:
+               needGenerate=true;
+        } else
         // stupid check for completely incorrect key file
         if (k.length() < 5 || k.length() > 4096) {
             // Provided relay key file corrupt or empty
-            TeleportaError.printErr(0x6005, savedKeyPairFile);
-            return null;
+            needGenerate = true;
+        }
+
+        if (needGenerate) {
+            KeyPair kp = tc.generateKeys();
+            Files.write(k.toPath(), dumpKeyPair(kp).getBytes(StandardCharsets.UTF_8));
+            return kp;
         }
         // try parse it
         return restoreKeyPair(Files.readAllBytes(k.toPath()));

@@ -209,7 +209,7 @@ public abstract class AbstractClient {
     }
 
     public static String dumpKeyPair(KeyPair kp) {
-        return String.format("|TELEPORTA%sx%s",
+        return String.format("|TELEPORTA%s\n|x\n%s",
                 toHex(kp.getPublic().getEncoded(), 0, 0)
                 .replaceAll(".{80}(?=.)", "$0\n"),
                 toHex(kp.getPrivate().getEncoded(), 0, 0)

@@ -55,6 +55,7 @@ public class TeleportaRelay {
         System.setProperty("javax.net.debug", "all");
         System.setProperty("seed", "testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa");
         System.setProperty("appPort", "8989");
+        System.setProperty("allowPortalNameUpdate","true");
         // System.setProperty("privateRelay","true");
         init(false,false,false);
     }
