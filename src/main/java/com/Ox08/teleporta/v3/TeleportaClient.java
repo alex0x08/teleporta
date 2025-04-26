@@ -78,7 +78,7 @@ public class TeleportaClient extends AbstractClient{
         setLogging(true);
         //  System.setProperty("relayKey","/opt/work/tmp/tele.pub");
         //System.setProperty("useLockFile", "true");
-        System.setProperty("dumbWatcher", "true");
+        //System.setProperty("dumbWatcher", "true");
         System.setProperty("savedKeys","/opt/work/tmp/tele-client.keys");
       //  System.setProperty("allowOutgoing","false");
         init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa",
@@ -589,11 +589,19 @@ public class TeleportaClient extends AbstractClient{
             zout.putNextEntry(new ZipEntry(ENTRY_META));
             props.store(zout, "");
             zout.putNextEntry(new ZipEntry(ENTRY_DATA));
+
+            final boolean renameWithPercent =
+                    Boolean.parseBoolean(System.getProperty("renameWithPercent", "true"));
+
             // stream directory right into network stream!
             if (file.isDirectory())
                 tc.encryptFolder(key,file,zout);
             else
-                try (FileInputStream in = new FileInputStream(file)){
+                // we allow renaming with % of outgoing files only if
+                // lockfile was enabled, otherwise there would be mess
+                try (InputStream in = renameWithPercent && ctx.useLockFile ?
+                        new CountingFileInputStream(file) :
+                        new FileInputStream(file)){
                     tc.encryptData(key, in, zout);
                 }
 
@@ -771,7 +779,12 @@ public class TeleportaClient extends AbstractClient{
                         // if content is file
                         case "file": {
                             // just decrypt to target file
-                            try (FileOutputStream fout = new FileOutputStream(out)) {
+                            final boolean renameWithPercent =
+                                    Boolean.parseBoolean(System.getProperty("renameWithPercent", "true"));
+
+                            try (OutputStream fout = renameWithPercent ?
+                                    new CountingFileOutputStream(out,fsize) :
+                                    new FileOutputStream(out)) {
                                 tc.decryptData(rkey, zin, fout);
                             }
                             break;

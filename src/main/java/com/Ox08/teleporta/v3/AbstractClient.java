@@ -117,9 +117,8 @@ public abstract class AbstractClient {
         // check for file magic header
         final byte[] head = new byte[TELEPORTED_FILE_HEADER.length];
         if (in.read(head)!= TELEPORTED_FILE_HEADER.length||
-                !Arrays.equals(head,TELEPORTED_FILE_HEADER)) {
+                !Arrays.equals(head,TELEPORTED_FILE_HEADER))
             throw TeleportaError.withError(0x7018);
-        }
     }
     public static boolean checkPacketHeader(InputStream in,
                                       boolean allowEmpty) throws IOException {
@@ -190,24 +189,17 @@ public abstract class AbstractClient {
         return new String(data)
                 .replaceAll("[^a-z0-9]", "");
     }
-
     public KeyPair restoreKeyPair(byte[] data) throws NoSuchAlgorithmException, InvalidKeySpecException {
-        if (data==null || data.length==0) {
-            return null;
-        }
+        if (data==null || data.length==0) return null;
         final String sdata = new String(data);
-        if (!sdata.contains("x")) {
-            return null;
-        }
+        if (!sdata.contains("x")) return null;
         final String[] pair = sdata.split("x");
-
         final String pk = pair[0].replaceAll("[^a-z0-9]", ""),
                 pr = pair[1].replaceAll("[^a-z0-9]", "");
         PublicKey pubkey = tc.restorePublicKey(fromHex(pk));
         PrivateKey privKey =  tc.restorePrivateKey(fromHex(pr));
         return new KeyPair(pubkey,privKey);
     }
-
     public static String dumpKeyPair(KeyPair kp) {
         return String.format("|TELEPORTA%s\n|x\n%s",
                 toHex(kp.getPublic().getEncoded(), 0, 0)
@@ -215,7 +207,6 @@ public abstract class AbstractClient {
                 toHex(kp.getPrivate().getEncoded(), 0, 0)
                 .replaceAll(".{80}(?=.)", "$0\n"));
     }
-
     /**
      * Teleporta Client's execution context
      */
@@ -249,7 +240,98 @@ public abstract class AbstractClient {
             this.savedKeyPair = savedKeyPair;
         }
     }
-
+    static class CountingFileInputStream extends InputStream {
+        private final String origName;
+        private final long total;
+        private long count;
+        private FileInputStream s;
+        private File f;
+        public CountingFileInputStream(File f) throws IOException {
+            this.origName = f.getName(); this.f = f; this.total = f.length();
+            this.s = new FileInputStream(f);
+        }
+        @Override
+        public int read() throws IOException {
+            int result = s.read();
+            if (result != -1) count++;
+            tryRenameFile();
+            return result;
+        }
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            final int result = s.read(b, off, len);
+            if (result != -1) count += result;
+            tryRenameFile();
+            return result;
+        }
+        @Override
+        public long skip(long n) throws IOException {
+            final long result = s.skip(n);
+            count += result;
+            return result;
+        }
+        private void tryRenameFile() throws IOException {
+            final int p = percent(count,total);
+            if (p % 10 != 0) return;
+            if (s!=null) s.close();
+            final File f2 = new File(f.getParentFile(),
+                    String.format("(%d%%) %s", p, origName));
+            if (f.exists() &&!f.renameTo(f2))
+                throw TeleportaError.withError(0x6105, "Cannot rename file");
+            f = f2;
+            s = new FileInputStream(f);
+            count =s.skip(count);
+        }
+        @Override
+        public void close() throws IOException {
+            if (s==null) return;
+            s.close();
+            final File f2 = new File(f.getParentFile(), origName);
+            if (!f.renameTo(f2))
+                    throw TeleportaError.withError(0x6105, "Cannot rename file");
+        }
+    }
+    static class CountingFileOutputStream extends OutputStream {
+        private final String origName;
+        private final long total;
+        private long count;
+        private FileOutputStream s;
+        private File f;
+        public CountingFileOutputStream(File f,long total) throws IOException {
+            this.origName = f.getName(); this.f = f; this.total = total;
+            if (f.exists() && !f.delete())
+                throw TeleportaError.withError(0x6105, "Cannot delete file");
+            tryRenameFile();
+        }
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            s.write(b, off, len); count += len;
+            tryRenameFile();
+        }
+        @Override
+        public void write(int b) throws IOException {
+            s.write(b); count++;
+            tryRenameFile();
+        }
+        @Override
+        public void close() throws IOException {
+            if (s==null) return;
+            s.close();
+            final File f2 = new File(f.getParentFile(), origName);
+            if (!f.renameTo(f2))
+                throw TeleportaError.withError(0x6105, "Cannot rename file");
+        }
+        private void tryRenameFile() throws IOException {
+            final int p = percent(count,total);
+            if (p== 100 || p % 10 != 0) return;
+            if (s!=null) s.close();
+            final File f2 = new File(f.getParentFile(),
+                    String.format("(%d%%) %s", p, origName));
+            if (f.exists() &&!f.renameTo(f2))
+                    throw TeleportaError.withError(0x6105, "Cannot rename file");
+            f = f2; s = new FileOutputStream(f,true);
+        }
+    }
     static class CountingZipOutputStream extends ZipOutputStream {
         private final long total;
         private final String fileId;
@@ -266,11 +348,7 @@ public abstract class AbstractClient {
             return fileId;
         }
         public int getPercent() {
-            return (int)(count * 100.0 / total + 0.5);
-        }
-        /** Returns the number of bytes written. */
-        public long getCount() {
-            return count;
+            return percent(count,total);
         }
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
@@ -305,54 +383,38 @@ public abstract class AbstractClient {
             return fileId;
         }
         public int getPercent() {
-            return (int)(count * 100.0 / total + 0.5);
-        }
-        /** Returns the number of bytes read. */
-        public long getCount() {
-            return count;
+            return percent(count,total);
         }
         @Override
         public int read() throws IOException {
             int result = super.read();
-            if (result != -1) {
-                count++;
-            }
+            if (result != -1) count++;
             return result;
         }
-
         @Override
         public int read(byte[] b, int off, int len) throws IOException {
             final int result = super.read(b, off, len);
-            if (result != -1) {
-                count += result;
-            }
+            if (result != -1) count += result;
             return result;
         }
-
         @Override
         public long skip(long n) throws IOException {
-            final long result = super.skip(n);
-            count += result;
-            return result;
+            final long result = super.skip(n); count += result; return result;
         }
-
         @Override
         public synchronized void mark(int readlimit) {
-            super.mark(readlimit);
-            mark = count;
-            // it's okay to mark even if mark isn't supported, as reset won't work
+            super.mark(readlimit); mark = count;
         }
-
         @Override
         public synchronized void reset() throws IOException {
-            if (!in.markSupported()) {
+            if (!in.markSupported())
                 throw new IOException("Mark not supported");
-            }
-            if (mark == -1) {
+            if (mark == -1)
                 throw new IOException("Mark not set");
-            }
-            super.reset();
-            count = mark;
+            super.reset(); count = mark;
         }
+    }
+    protected static int percent(long count,long total)  {
+        return (int)(count * 100.0 / total + 0.5);
     }
 }

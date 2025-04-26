@@ -44,6 +44,8 @@ public class TeleFilesWatch {
     // mark that watcher service is running
     private volatile boolean running;
 
+    private final boolean renameWithPercent;
+
     /**
      * Default constructor
      * @param useLockFile
@@ -53,6 +55,9 @@ public class TeleFilesWatch {
         this.useLockFile = useLockFile;
         this.ses = Executors.newScheduledThreadPool(3); //2 tasks + 1 backup
         boolean useDumbWatcher = Boolean.parseBoolean(System.getProperty("dumbWatcher", "false"));
+        renameWithPercent =
+                Boolean.parseBoolean(System.getProperty("renameWithPercent", "true"));
+
         // setup additional variables when 'lock' files enabled
         if (useLockFile) {
             LOG.info(TeleportaMessage.of("teleporta.system.message.usingLockFiles"));
@@ -110,7 +115,6 @@ public class TeleFilesWatch {
         // this task uses java's WatchService for fs monitoring
         watcher.start();
     }
-
     public boolean isWatching(Path dir) {
         return  watcher.isWatching(dir);
     }
@@ -177,7 +181,6 @@ public class TeleFilesWatch {
             for (Map.Entry<Path,DirState> p : lockFiles.entrySet()) {
                 // trigger only on 'PROCESSING' state, initiated by lock removal action
                 if (p.getValue() != DirState.PROCESSING) continue;
-
                 if (LOG.isLoggable(Level.FINE))
                     LOG.fine(TeleportaMessage.of("teleporta.system.message.processingFile",
                             p.getKey().toString()));
@@ -188,17 +191,16 @@ public class TeleFilesWatch {
                     for (Path e : dirStream) {
                         if (fileCounter > FILES_BULK_LIMIT)
                             break;
-
                         final File f = e.toFile();
+                        if (renameWithPercent && isUncompletedPrefix(f.getName())) {
+                            continue;
+                        }
                         if (processingAfterUnlock.contains(f))
                             continue;
-
                         if (!isAcceptable(f,false))
                             // ignore non-existent or non-readable
                             // ( possibly deleted before trigger happens )
                             continue;
-
-
                         // print out event
                         if (LOG.isLoggable(Level.FINE))
                             LOG.fine(TeleportaMessage
@@ -249,7 +251,6 @@ public class TeleFilesWatch {
             } catch (Exception ignored) {
                 return false;
             }
-
         return false;
     }
 
@@ -389,6 +390,9 @@ public class TeleFilesWatch {
                         final WatchEvent<Path> ev = (WatchEvent<Path>) event;
                         final Path name = ev.context(),
                                 child = dir.resolve(name);
+                        if (renameWithPercent && isUncompletedPrefix(child.getFileName().toString())) {
+                            continue;
+                        }
                         if (kind == ENTRY_DELETE) {
                             // we don't process any other removals, only lock file!
                             if (!useLockFile)
@@ -528,6 +532,9 @@ public class TeleFilesWatch {
                                 break;
 
                             final File f = e.toFile();
+                            if (renameWithPercent && isUncompletedPrefix(f.getName())) {
+                                continue;
+                            }
                             if (processing.contains(f))
                                 continue;
 
@@ -589,5 +596,13 @@ public class TeleFilesWatch {
                 }
             }, 3, 3, TimeUnit.SECONDS);
         }
+    }
+
+    private static boolean isUncompletedPrefix(String name) {
+        if (name.startsWith("(0%) ") || name.startsWith("(100%) "))
+            return true;
+        final String n =name.substring(0,6);
+        System.out.println("_n=["+n+"] match:" +n.matches("\\([0-9]{2}%\\) "));
+        return n.matches("\\([0-9]{2}%\\) ");
     }
 }
