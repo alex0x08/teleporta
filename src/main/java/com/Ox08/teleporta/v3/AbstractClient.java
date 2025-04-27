@@ -196,9 +196,7 @@ public abstract class AbstractClient {
         final String[] pair = sdata.split("x");
         final String pk = pair[0].replaceAll("[^a-z0-9]", ""),
                 pr = pair[1].replaceAll("[^a-z0-9]", "");
-        PublicKey pubkey = tc.restorePublicKey(fromHex(pk));
-        PrivateKey privKey =  tc.restorePrivateKey(fromHex(pr));
-        return new KeyPair(pubkey,privKey);
+        return new KeyPair(tc.restorePublicKey(fromHex(pk)),tc.restorePrivateKey(fromHex(pr)));
     }
     public static String dumpKeyPair(KeyPair kp) {
         return String.format("|TELEPORTA%s\n|x\n%s",
@@ -240,13 +238,17 @@ public abstract class AbstractClient {
             this.savedKeyPair = savedKeyPair;
         }
     }
-    static class CountingFileInputStream extends InputStream {
+
+    /**
+     * Replaces output file (append % of completion) and switch underlying stream
+     */
+    static class ReplacingFileInputStream extends InputStream {
         private final String origName;
         private final long total;
         private long count;
         private FileInputStream s;
         private File f;
-        public CountingFileInputStream(File f) throws IOException {
+        public ReplacingFileInputStream(File f) throws IOException {
             this.origName = f.getName(); this.f = f; this.total = f.length();
             this.s = new FileInputStream(f);
         }
@@ -279,6 +281,7 @@ public abstract class AbstractClient {
             if (f.exists() &&!f.renameTo(f2))
                 throw TeleportaError.withError(0x6105, "Cannot rename file");
             f = f2;
+            //f.getParentFile().setLastModified(System.currentTimeMillis());
             s = new FileInputStream(f);
             count =s.skip(count);
         }
@@ -291,13 +294,18 @@ public abstract class AbstractClient {
                     throw TeleportaError.withError(0x6105, "Cannot rename file");
         }
     }
-    static class CountingFileOutputStream extends OutputStream {
+
+    /**
+     * Custom output stream, renames output file (append % of completion)
+     *  and switches underlying fileoutputstream automatically
+     */
+    static class ReplacingFileOutputStream extends OutputStream {
         private final String origName;
         private final long total;
         private long count;
         private FileOutputStream s;
         private File f;
-        public CountingFileOutputStream(File f,long total) throws IOException {
+        public ReplacingFileOutputStream(File f, long total) throws IOException {
             this.origName = f.getName(); this.f = f; this.total = total;
             if (f.exists() && !f.delete())
                 throw TeleportaError.withError(0x6105, "Cannot delete file");
@@ -329,9 +337,15 @@ public abstract class AbstractClient {
                     String.format("(%d%%) %s", p, origName));
             if (f.exists() &&!f.renameTo(f2))
                     throw TeleportaError.withError(0x6105, "Cannot rename file");
-            f = f2; s = new FileOutputStream(f,true);
+            f = f2;
+            //f.getParentFile().setLastModified(System.currentTimeMillis());
+            s = new FileOutputStream(f,true);
         }
     }
+
+    /**
+     * Custom output stream, used to count bytes on write
+     */
     static class CountingZipOutputStream extends ZipOutputStream {
         private final long total;
         private final String fileId;
@@ -367,6 +381,9 @@ public abstract class AbstractClient {
         }
     }
 
+    /**
+     * Custom input stream, used to count bytes on read
+     */
     static class CountingZipInputStream extends ZipInputStream {
         private long count,mark = -1;
         private final long total;
@@ -414,6 +431,14 @@ public abstract class AbstractClient {
             super.reset(); count = mark;
         }
     }
+
+    /**
+     * Calc percent between provided numbers
+     * @param count
+     * @param total
+     * @return
+     *      rounded percent as int
+     */
     protected static int percent(long count,long total)  {
         return (int)(count * 100.0 / total + 0.5);
     }

@@ -600,7 +600,7 @@ public class TeleportaClient extends AbstractClient{
                 // we allow renaming with % of outgoing files only if
                 // lockfile was enabled, otherwise there would be mess
                 try (InputStream in = renameWithPercent && ctx.useLockFile ?
-                        new CountingFileInputStream(file) :
+                        new ReplacingFileInputStream(file) :
                         new FileInputStream(file)){
                     tc.encryptData(key, in, zout);
                 }
@@ -783,7 +783,7 @@ public class TeleportaClient extends AbstractClient{
                                     Boolean.parseBoolean(System.getProperty("renameWithPercent", "true"));
 
                             try (OutputStream fout = renameWithPercent ?
-                                    new CountingFileOutputStream(out,fsize) :
+                                    new ReplacingFileOutputStream(out,fsize) :
                                     new FileOutputStream(out)) {
                                 tc.decryptData(rkey, zin, fout);
                             }
