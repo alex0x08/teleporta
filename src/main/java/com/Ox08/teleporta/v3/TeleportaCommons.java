@@ -13,14 +13,10 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.KeySpec;
-import java.util.Formatter;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Random;
-import java.util.logging.ConsoleHandler;
-import java.util.logging.Handler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.zip.ZipOutputStream;
+import java.util.logging.*;
 
 /**
  * Shared functions and classes, used both on relay and client sides
@@ -140,7 +136,8 @@ public class TeleportaCommons {
         return data;
     }
     public static String toHex(byte[] data, int from, int to) {
-        final Formatter formatter = new Formatter();
+        // *not* thread safe
+        final java.util.Formatter formatter = new java.util.Formatter();
         for (int i = from; i < (to <= 0 ? data.length : to); i++)
             formatter.format("%02x", data[i]);
 
@@ -213,10 +210,10 @@ public class TeleportaCommons {
         if (debug) {
             // setup logging for client connection
             Logger.getLogger("sun.net.www.protocol.http.HttpURLConnection")
-                    .setLevel(Level.ALL);
+                    .setLevel(Level.FINE);
             // setup logging for relay connections
             Logger.getLogger("com.sun.net.httpserver")
-                    .setLevel(Level.ALL);
+                    .setLevel(Level.FINE);
         }
         final Logger topLogger = Logger.getLogger("");
         // Handler for console (reuse it if it already exists)
@@ -234,6 +231,8 @@ public class TeleportaCommons {
                 consoleHandler = new ConsoleHandler();
                 topLogger.addHandler(consoleHandler);
         }
+        consoleHandler.setFormatter(new TelepLogFormatter());
+
         // note: we need to change console encoding for Windows & Russian locale,
         //       because it uses different codepages for UI and console
         //       and Charset.defaultCharset() responds cp1251 where console
@@ -247,8 +246,8 @@ public class TeleportaCommons {
             throw TeleportaError.withError(0x600,e);
         }
         if (debug) {
-            consoleHandler.setLevel(Level.ALL);
-            LOG.setLevel(Level.ALL);
+            consoleHandler.setLevel(Level.FINE);
+            LOG.setLevel(Level.FINE);
         }
     }
 
@@ -392,5 +391,30 @@ public class TeleportaCommons {
      */
     public static int percent(long count,long total)  {
         return (int)(count * 100.0 / total + 0.5);
+    }
+
+    static class TelepLogFormatter extends Formatter {
+        @Override
+        public String format(LogRecord record) {
+            final StringBuilder sb = new StringBuilder();
+            sb.append(new Date(record.getMillis()))
+                    .append(" ")
+                    .append(record.getLevel().getLocalizedName())
+                    .append(": ")
+                    .append(formatMessage(record))
+                    .append(System.lineSeparator());
+
+            if (record.getThrown() != null) {
+                try (StringWriter sw = new StringWriter();
+                     PrintWriter pw = new PrintWriter(sw)) {
+                    record.getThrown().printStackTrace(pw);
+                    pw.flush();
+                    sb.append(sw);
+                } catch (Exception ignored) {
+                    // ignore
+                }
+            }
+            return sb.toString();
+        }
     }
 }

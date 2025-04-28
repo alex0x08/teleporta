@@ -72,14 +72,14 @@ public class AbstractI18nMessageStore  {
      * @return
      */
     protected String getMessage(String key) {
-        if (this.defaultBundle.containsKey(key)) {
+        if (this.defaultBundle.containsKey(key))
             return this.defaultBundle.getString(key);
-        }
-        for (ResourceBundle r : this.additionalBundles) {
-            if (r.containsKey(key)) {
+
+        for (ResourceBundle r : this.additionalBundles)
+            if (r.containsKey(key))
                 return r.getString(key);
-            }
-        }
+
+
         return null;
     }
 }

@@ -79,9 +79,10 @@ public class TeleportaRelay {
         int port = Integer.parseInt(System.getProperty("appPort", "0"));
         // get relay home folder
         final File teleportaHome = checkCreateHomeFolder("teleporta-relay");
-        if (clearOutgoing) {
+        // remove 'to' folder if required
+        if (clearOutgoing)
             deleteRecursive(teleportaHome, false,null);
-        }
+
         // We need to detect own jar location and pass full path 
         // as global variable to 'RespondSelfHandler'
         final CodeSource codeSource = TeleportaRelay.class
@@ -249,6 +250,7 @@ public class TeleportaRelay {
                 // write app data
                 for (int n = in.read(buffer); n >= 0; n = in.read(buffer))
                     zout.write(buffer, 0, n);
+                // must be called:
                 zout.closeEntry();
                 // if we're able to detect self domain - add connection string
                 if (self != null) {
@@ -336,9 +338,9 @@ public class TeleportaRelay {
             // the 'total' property is used as counter, to iterate over properties,
             // linked to same portal
             props.put("total", String.valueOf(count));
-            if (LOG.isLoggable(Level.FINE)) {
+            if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.respondPortals", count));
-            }
+
             respondEncryptedProperties(p.publicKey, props, httpExchange);
         }
     }
@@ -348,19 +350,19 @@ public class TeleportaRelay {
     static class RegisterHandler extends AbstractHandler {
         // if true - we allow to replace registered portals
         private final boolean allowPortalNamesUpdate; 
-        private final String motd;
+        private final String motd; // message of the day
         RegisterHandler(RelayRuntimeContext rc) {
             super(rc);
             allowPortalNamesUpdate = Boolean.parseBoolean(
                     System.getProperty("allowPortalNameUpdate", "false"));
             // build relay's MOTD (welcome message)
             String m =System.getProperty("motd",null);
-            if (m == null || m.isEmpty()) {
+            if (m == null || m.isEmpty())
                 m = TeleportaMessage.of("teleporta.system.message.defaultMotd",
                         SystemInfo.SI.getBuildVersion());
-            } else if (m.length()>512) {
+            else if (m.length()>512)
                 m = m.substring(0,512);
-            }
+
             motd = m;
         }
         @Override
@@ -450,9 +452,10 @@ public class TeleportaRelay {
                     p.publicKey = publicKey; // update public key
                     // notify all other portals to reload list from relay
                     for (RuntimePortal pp : rc.portals.values()) {
-                        if (pp.name.equals(p.name)) {
+                        // skip self
+                        if (pp.name.equals(p.name))
                             continue;
-                        }
+
                         pp.needReloadPortals = true;
                     }
                 } else {
@@ -464,9 +467,9 @@ public class TeleportaRelay {
             } else {
                 // if there is no portal with this name - proceed with registration
                 // inform all other portals to reload portals list
-                for (RuntimePortal p : rc.portals.values()) {
+                for (RuntimePortal p : rc.portals.values())
                     p.needReloadPortals = true;
-                }
+
                 // register new portal on relay
                 rc.portals.put(id, new RuntimePortal(name, publicKey));
                 rc.portalNames.put(name, id);
@@ -479,15 +482,15 @@ public class TeleportaRelay {
             final Properties resp = new Properties();
             resp.setProperty("id", PK.toExternal(id));
             /*
-             * If we operate in normal mode then it's ok to respond own public key
+             * If we operate in normal mode then it's ok to respond relay's public key
              */
-            if (!rc.privateRelay) {
+            if (!rc.privateRelay)
                 resp.setProperty("publicKey",
                         toHex(rc.relayPair.getPublic().getEncoded(), 0, 0));
-            }
-            if (motd!=null) {
+            // add MOTD if present
+            if (motd!=null)
                 resp.setProperty("motd",motd);
-            }
+
             respondProperties(resp, httpExchange);
         }
     }
@@ -529,35 +532,39 @@ public class TeleportaRelay {
             p.lastSeen = System.currentTimeMillis();
             final Properties props = new Properties();
             // put mark if client must reload portals list
-            if (p.needReloadPortals) {
+            if (p.needReloadPortals)
                 props.setProperty("reloadPortals", "true");
-            }
-            if (p.needLoadClipboard) {
+            // put another mark if client must set clipboard (if enabled)
+            if (p.needLoadClipboard)
                 props.setProperty("updateClipboard", "true");
-            }
+
             final File toFolder = new File(rc.storageDir, PK.toExternal(to));
-            // if there were no files for that portal (could be a new one) - respond current
+            // if there were no files for that portal (could be a new one)
             if (!toFolder.exists() || !toFolder.isDirectory()) {
-                if (props.isEmpty()) {
+                // no additional properties
+                if (props.isEmpty())
                     respondAndClose(200, httpExchange);
-                } else {
+                else
                     respondEncryptedProperties(p.publicKey, props, httpExchange);
-                }
+
                 return;
             }
             final StringBuilder sb = new StringBuilder();
             try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(toFolder.toPath())) {
                 int fileCounter = 1;
                 for (Path e : dirStream) {
-                    if (fileCounter > rc.limits.maxPendingFilesAtOnce) {
+                    // limit reached
+                    if (fileCounter > rc.limits.maxPendingFilesAtOnce)
                         break;
-                    }
-                    if (!e.toString().endsWith(EXT_FILE)) {
+
+                    // skip files which are not ready or not ours (no .dat extension)
+                    if (!e.toString().endsWith(EXT_FILE))
                         continue;
-                    }
-                    if (sb.length() > 0) {
+
+                    // append separator, if this is not the first record
+                    if (sb.length() > 0)
                         sb.append(",");
-                    }
+
                     String name = e.getFileName().toString();
                     // remove prefix and extension from file name
                     name = name.substring("f_".length(), name.length() - EXT_FILE.length());
@@ -567,15 +574,18 @@ public class TeleportaRelay {
             } catch (IOException e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
-            // no .dat files, but still settings
+            // there is no pending files, but settings
             if (sb.length() == 0) {
-                if (props.isEmpty()) {
+                // and no any properties (that's ok), just respond 200 OK with empty body
+                if (props.isEmpty())
                     respondAndClose(200, httpExchange);
-                } else {
+                // otherwise - encode them and respond
+                else
                     respondEncryptedProperties(p.publicKey, props, httpExchange);
-                }
+
                 return;
             }
+            // there are some pending files - proceed
             props.setProperty("files", sb.toString());
             respondEncryptedProperties(p.publicKey, props, httpExchange);
         }

@@ -140,9 +140,9 @@ public class Main {
             final boolean relayHasPortal =
                     Boolean.parseBoolean(System.getProperty("relayHasPortal", "false"));
             TeleportaRelay.init(enableClipboard,clearOutgoing,relayHasPortal);
-        } else {
+        } else
             TeleportaRelay.init(false,false,true);
-        }
+
 
     }
     /**

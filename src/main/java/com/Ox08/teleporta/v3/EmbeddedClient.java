@@ -52,11 +52,7 @@ public class EmbeddedClient extends AbstractClient {
             });
         }
         // if we allow outgoing files - enable Folder Watch service
-        if (ctx.allowOutgoing) {
-            this.watch = new TeleFilesWatch(ctx.useLockFile);
-        } else {
-            this.watch = null;
-        }
+        this.watch = ctx.allowOutgoing ? new TeleFilesWatch(ctx.useLockFile) : null;
     }
     void init()  {
         if (wasInitialized)
@@ -122,7 +118,6 @@ public class EmbeddedClient extends AbstractClient {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }
                         });
-
                 } catch (Exception e) { // MUST catch *all* exceptions there
                     LOG.log(Level.WARNING, e.getMessage(), e);
                 }
@@ -212,7 +207,6 @@ public class EmbeddedClient extends AbstractClient {
         // no .dat files, but still settings
         if (files.isEmpty())
             return null;
-
         return files.toArray(new String[0]);
     }
     /**
@@ -224,19 +218,20 @@ public class EmbeddedClient extends AbstractClient {
         if (!ctx.allowOutgoing)
             return;
 
-        final File outputDir = new File(ctx.storageDir, TeleportaMessage.of("teleporta.folder.to"));
+        final File outputDir = new File(ctx.storageDir,
+                TeleportaMessage.of("teleporta.folder.to"));
         for (String e:expiredPortals) {
             final Path p = new File(outputDir, e).toPath();
             if (watch.isWatching(p))
                 watch.unregister(p);
-
         }
     }
     /**
      * In embedded client, this function is used to update watchers only
      */
     public void reloadPortals() {
-        final File outputDir = new File(ctx.storageDir, TeleportaMessage.of("teleporta.folder.to"));
+        final File outputDir = new File(ctx.storageDir,
+                TeleportaMessage.of("teleporta.folder.to"));
         for (String p : ctx.relayCtx.portalNames.keySet()) {
             final File f = new File(outputDir, p);
             final Path pp = f.toPath();
@@ -274,7 +269,8 @@ public class EmbeddedClient extends AbstractClient {
         }
         final SecretKey key;
         try (OutputStream out = Files.newOutputStream(cbout.toPath());
-             ByteArrayInputStream in = new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8))) {
+             ByteArrayInputStream in = new ByteArrayInputStream(data
+                     .getBytes(StandardCharsets.UTF_8))) {
             // write magic header
             out.write(TELEPORTA_PACKET_HEADER);
             // generate session key (AES)
@@ -491,13 +487,15 @@ public class EmbeddedClient extends AbstractClient {
                     rFile!=null ? rFile.getAbsolutePath() : ""));
             return;
         }
-        try (BufferedInputStream bin = new BufferedInputStream(Files.newInputStream(rFile.toPath()), 4096);
+        try (BufferedInputStream bin = new BufferedInputStream(
+                Files.newInputStream(rFile.toPath()), 4096);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
             // check magic header presents
             checkPacketHeader(bin,false);
             final SecretKeySpec rkey = readSessionKey(bin, false,
                     ctx.relayCtx.relayPair.getPrivate());
             if (rkey == null) {
+                LOG.warning(TeleportaError.messageFor(0x7274));
                 return;
             }
             tc.decryptData(rkey, bin, bout);

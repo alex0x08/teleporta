@@ -188,7 +188,8 @@ public class TeleCrypt {
             // note: required custom implementation to avoid closing of parent stream
             final NonclosableCipherOutputStream cipherOut
                     = new NonclosableCipherOutputStream(outputStream, cipher);
-            final AbstractClient.CountingZipOutputStream cz = outputStream instanceof AbstractClient.CountingZipOutputStream
+            final AbstractClient.CountingZipOutputStream cz =
+                    outputStream instanceof AbstractClient.CountingZipOutputStream
                     ? (AbstractClient.CountingZipOutputStream) outputStream :null;
 
             // store IV directly in file as first 16 bytes

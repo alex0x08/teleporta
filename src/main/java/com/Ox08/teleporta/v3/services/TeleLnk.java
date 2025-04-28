@@ -451,7 +451,8 @@ public class TeleLnk {
             vid_b = toByteArray(vid);
             localBasePath_b = localBasePath.getBytes();
             commonPathSuffix_b = new byte[0];
-            int size = hsize + vid_b.length + localBasePath_b.length + 1 + commonPathSuffix_b.length + 1;
+            int size = hsize + vid_b.length + localBasePath_b.length
+                    + 1 + commonPathSuffix_b.length + 1;
             if (hsize > 28) {
                 size += localBasePath.length() * 2 + 2;
                 size += 1;
@@ -474,18 +475,17 @@ public class TeleLnk {
             bw.write(vid_b);
             bw.write(localBasePath_b);
             bw.write(0);
-            if (hsize > 28) {
+            if (hsize > 28)
                 bw.writeUnicodeStringNullTerm(localBasePath);
-            }
             while (bw.getPosition() < pos + size)
                 bw.write(0);
         }
         private byte[] toByteArray(SerializableLinkObject o) throws IOException {
-            try (ByteArrayOutputStream arr = new ByteArrayOutputStream(); LinkDataWriter bt = new LinkDataWriter(arr)) {
+            try (ByteArrayOutputStream arr = new ByteArrayOutputStream();
+                 LinkDataWriter bt = new LinkDataWriter(arr)) {
                 o.serialize(bt);
                 return arr.toByteArray();
-            }
-        }
+            }        }
 
         public void setLocalBasePath(String s) {
             if (s == null) return;
@@ -512,7 +512,8 @@ public class TeleLnk {
             byte[][] b = new byte[size()][];
             int i = 0;
             for (ItemID j : this) {
-                try (ByteArrayOutputStream ba = new ByteArrayOutputStream(); LinkDataWriter w = new LinkDataWriter(ba)) {
+                try (ByteArrayOutputStream ba = new ByteArrayOutputStream();
+                     LinkDataWriter w = new LinkDataWriter(ba)) {
                     j.serialize(w);
                     b[i++] = ba.toByteArray();
                 }

@@ -306,9 +306,9 @@ public class TeleportaClient extends AbstractClient{
                 BufferedInputStream in = new BufferedInputStream(cin, 512);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
             // check for packet header
-            // note: we allow empty data, because relay would not send anything if there is no pending events
+            // note: we allow empty data, because relay would not send anything
+            // if there is no pending events
             if (!checkPacketHeader(in,true)) {
-                LOG.warning(TeleportaError.messageFor(0x7273));
                 http.disconnect();
                 return null;
             }
@@ -316,7 +316,6 @@ public class TeleportaClient extends AbstractClient{
             //  if there are no pending files or events
             final SecretKeySpec rkey = readSessionKey(in, true,ctx.keyPair.getPrivate());
             if (rkey == null) {
-                LOG.warning(TeleportaError.messageFor(0x7274));
                 http.disconnect();
                 return null;
             }
@@ -555,7 +554,8 @@ public class TeleportaClient extends AbstractClient{
             return;
         }
         if (LOG.isLoggable(Level.FINE))
-            LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardSent",  data.length()));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardSent",
+                    data.length()));
 
         http.disconnect();
     }
@@ -596,7 +596,8 @@ public class TeleportaClient extends AbstractClient{
         props.setProperty("type", file.isDirectory() ? "folder" : "file");
         final SecretKey key;
         try (OutputStream out = http.getOutputStream();
-                CountingZipOutputStream zout = new CountingZipOutputStream(file.getName(),file.length(),out)) {
+                CountingZipOutputStream zout = new CountingZipOutputStream(file.getName(),
+                        file.length(),out)) {
             ctx.processingFiles.add(file.getAbsolutePath());
             out.write(TELEPORTED_FILE_HEADER);
             key = tc.generateFileKey(); // generate session key (AES)
@@ -963,11 +964,13 @@ public class TeleportaClient extends AbstractClient{
 
             // check for 'lock' file if enabled
             if (useLockFile) {
-                final File lock = new File(f,TeleportaMessage.of("teleporta.service.fileWatch.lockFile"));
+                final File lock = new File(f,TeleportaMessage
+                        .of("teleporta.service.fileWatch.lockFile"));
                 if (lock.exists())
                     continue;
             }
-            // because there could be a lot of files, we use streaming instead of common File.list(), which is slow
+            // because there could be a lot of files, we use streaming instead of common File.list(),
+            // which is slow
             try (DirectoryStream<Path> dirStream = Files.newDirectoryStream(f.toPath())) {
                 for (Path e : dirStream) {
                     final File ff = e.toFile();
