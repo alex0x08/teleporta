@@ -4,9 +4,7 @@ import com.Ox08.teleporta.v3.messages.TeleportaError;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
-import java.io.File;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.URL;
 import java.nio.charset.Charset;
@@ -22,6 +20,8 @@ import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.ZipOutputStream;
+
 /**
  * Shared functions and classes, used both on relay and client sides
  *
@@ -334,5 +334,63 @@ public class TeleportaCommons {
                 return super.put(key, value);
             }
         }
+    }
+
+    static class CountingInputStream extends InputStream {
+        private final InputStream in;
+        private long count;
+        public CountingInputStream(InputStream in) {
+            this.in = in;
+        }
+        public long getCount() {return count;}
+
+        @Override
+        public int read() throws IOException {
+            int result = in.read();
+            if (result != -1) count++;
+            return result;
+        }
+    }
+
+    static class CountingOutputStream extends OutputStream {
+        private final OutputStream out;
+        private long count;
+        /**
+         * Wraps another output stream, counting the number of bytes written.
+         *
+         * @param out the output stream to be wrapped
+         */
+        public CountingOutputStream(OutputStream out) {
+            this.out = out;
+        }
+        public long getCount() {return count;}
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            out.write(b, off, len); count += len;
+        }
+        @Override
+        public void write(int b) throws IOException {
+            out.write(b); count++;
+        }
+        @Override
+        public void flush() throws IOException {
+            out.flush();
+        }
+        @Override
+        public void close() throws IOException {
+            out.close();
+        }
+    }
+
+
+    /**
+     * Calc percent between provided numbers
+     * @param count
+     * @param total
+     * @return
+     *      rounded percent as int
+     */
+    public static int percent(long count,long total)  {
+        return (int)(count * 100.0 / total + 0.5);
     }
 }

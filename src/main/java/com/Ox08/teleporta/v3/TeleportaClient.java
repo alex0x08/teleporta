@@ -79,7 +79,7 @@ public class TeleportaClient extends AbstractClient{
         //  System.setProperty("relayKey","/opt/work/tmp/tele.pub");
         //System.setProperty("useLockFile", "true");
         //System.setProperty("dumbWatcher", "true");
-        System.setProperty("savedKeys","/opt/work/tmp/tele-client.keys");
+        //System.setProperty("savedKeys","/opt/work/tmp/tele-client.keys");
       //  System.setProperty("allowOutgoing","false");
         init("http://127.0.0.1:8989/testaaaatest22222222aaaaaaaaaaaaaaaaaaaaaa",
                 true,false);
@@ -132,7 +132,7 @@ public class TeleportaClient extends AbstractClient{
         final boolean respondVersion =
                 Boolean.parseBoolean(System.getProperty("respondVersion", "true"));
 
-            // build teleporta client context
+        // build teleporta client context
         final ClientRuntimeContext ctx = new ClientRuntimeContext(new URL(relayUrl),
                 teleportaHome,
                 allowClipboard,
@@ -288,8 +288,7 @@ public class TeleportaClient extends AbstractClient{
         final HttpURLConnection http = (HttpURLConnection) con;
         http.setDefaultUseCaches(false);
         setVersion(con,ctx);
-
-        int code = http.getResponseCode();
+        final int code = http.getResponseCode();
         if (code != HttpURLConnection.HTTP_OK) {
             // this is probably wrong (because we rely on HTTP error code here),
             // but used for automatic re-registering when relay restarts
@@ -303,11 +302,13 @@ public class TeleportaClient extends AbstractClient{
             return null;
         }
         final Properties props = new Properties();
-        try (BufferedInputStream in = new BufferedInputStream(http.getInputStream(), 512);
+        try (CountingInputStream cin = new CountingInputStream(http.getInputStream());
+                BufferedInputStream in = new BufferedInputStream(cin, 512);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
             // check for packet header
             // note: we allow empty data, because relay would not send anything if there is no pending events
             if (!checkPacketHeader(in,true)) {
+                LOG.warning(TeleportaError.messageFor(0x7273));
                 http.disconnect();
                 return null;
             }
@@ -315,13 +316,21 @@ public class TeleportaClient extends AbstractClient{
             //  if there are no pending files or events
             final SecretKeySpec rkey = readSessionKey(in, true,ctx.keyPair.getPrivate());
             if (rkey == null) {
+                LOG.warning(TeleportaError.messageFor(0x7274));
                 http.disconnect();
                 return null;
             }
             tc.decryptData(rkey, in, bout);
+            if (LOG.isLoggable(Level.FINE))
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.bytesReceived",
+                        cin.getCount()));
+
             try (ByteArrayInputStream bin = new ByteArrayInputStream(bout.toByteArray())) {
                 props.load(bin);
             }
+            if (LOG.isLoggable(Level.FINE))
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.propsCount",
+                        props.size()));
         } finally {
             http.disconnect();
         }
@@ -419,10 +428,10 @@ public class TeleportaClient extends AbstractClient{
     }
     private KeyPair readSavedKeyPair(String savedKeyPairFile) throws IOException,
             NoSuchAlgorithmException, InvalidKeySpecException {
-        if (savedKeyPairFile == null) {
+        if (savedKeyPairFile == null)
             return null;
-        }
-        File k = new File(savedKeyPairFile);
+
+        final File k = new File(savedKeyPairFile);
         boolean needGenerate=false;
         if (!k.exists() || !k.isFile() || !k.canRead()) {
                 TeleportaError.printErr(0x606, savedKeyPairFile);
@@ -430,13 +439,13 @@ public class TeleportaClient extends AbstractClient{
                needGenerate=true;
         } else
         // stupid check for completely incorrect key file
-        if (k.length() < 5 || k.length() > 4096) {
+        if (k.length() < 5 || k.length() > 4096)
             // Provided relay key file corrupt or empty
             needGenerate = true;
-        }
+
 
         if (needGenerate) {
-            KeyPair kp = tc.generateKeys();
+            final KeyPair kp = tc.generateKeys();
             Files.write(k.toPath(), dumpKeyPair(kp).getBytes(StandardCharsets.UTF_8));
             return kp;
         }
@@ -468,22 +477,32 @@ public class TeleportaClient extends AbstractClient{
             http.disconnect();
             return out;
         }
-        try (BufferedInputStream in = new BufferedInputStream(http.getInputStream(), 512);
+        try (CountingInputStream cin = new CountingInputStream(http.getInputStream());
+                BufferedInputStream in = new BufferedInputStream(cin, 512);
              ByteArrayOutputStream bout = new ByteArrayOutputStream()) {
             // check for packet header
             if (!checkPacketHeader(in,true)) {
+                LOG.warning(TeleportaError.messageFor(0x7273));
                 http.disconnect();
                 return null;
             }
             final SecretKeySpec rkey = readSessionKey(in, false,ctx.keyPair.getPrivate());
             if (rkey == null) {
+                LOG.warning(TeleportaError.messageFor(0x7274));
                 http.disconnect();
                 return out;
             }
             tc.decryptData(rkey, in, bout);
+            if (LOG.isLoggable(Level.FINE))
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.bytesReceived",
+                        cin.getCount()));
+
             try (ByteArrayInputStream bin = new ByteArrayInputStream(bout.toByteArray())) {
                 out.load(bin);
             }
+            if (LOG.isLoggable(Level.FINE))
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.propsCount",
+                        out.size()));
             return out;
         } finally {
             http.disconnect();
@@ -512,7 +531,7 @@ public class TeleportaClient extends AbstractClient{
         http.setRequestMethod("POST");
         http.setDoOutput(true);
         final SecretKey key;
-        try (OutputStream out = http.getOutputStream();
+        try (CountingOutputStream out = new CountingOutputStream(http.getOutputStream());
              ByteArrayInputStream in = new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8))) {
             out.write(TELEPORTA_PACKET_HEADER);
             key = tc.generateFileKey();
@@ -536,7 +555,7 @@ public class TeleportaClient extends AbstractClient{
             return;
         }
         if (LOG.isLoggable(Level.FINE))
-            LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardSent", data.length()));
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.clipboardSent",  data.length()));
 
         http.disconnect();
     }

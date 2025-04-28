@@ -339,7 +339,7 @@ public class TeleportaRelay {
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.respondPortals", count));
             }
-            respondEncryptedProperties(p.publicKey, props, httpExchange, true);
+            respondEncryptedProperties(p.publicKey, props, httpExchange);
         }
     }
     /**
@@ -376,8 +376,12 @@ public class TeleportaRelay {
             }
             // parse input, also a .properties file
             final Properties data = new Properties();
-            try (InputStream in = httpExchange.getRequestBody()) {
+            try (CountingInputStream in = new CountingInputStream(httpExchange.getRequestBody())) {
                 data.load(in);
+                if (LOG.isLoggable(Level.FINE)) {
+                    LOG.fine(TeleportaMessage.of("teleporta.system.message.bytesReceived",
+                            in.getCount()));
+                }
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
                 respondAndClose(500, httpExchange);
@@ -484,7 +488,7 @@ public class TeleportaRelay {
             if (motd!=null) {
                 resp.setProperty("motd",motd);
             }
-            respondProperties(resp, httpExchange, true);
+            respondProperties(resp, httpExchange);
         }
     }
 
@@ -537,7 +541,7 @@ public class TeleportaRelay {
                 if (props.isEmpty()) {
                     respondAndClose(200, httpExchange);
                 } else {
-                    respondEncryptedProperties(p.publicKey, props, httpExchange, true);
+                    respondEncryptedProperties(p.publicKey, props, httpExchange);
                 }
                 return;
             }
@@ -568,12 +572,12 @@ public class TeleportaRelay {
                 if (props.isEmpty()) {
                     respondAndClose(200, httpExchange);
                 } else {
-                    respondEncryptedProperties(p.publicKey, props, httpExchange, true);
+                    respondEncryptedProperties(p.publicKey, props, httpExchange);
                 }
                 return;
             }
             props.setProperty("files", sb.toString());
-            respondEncryptedProperties(p.publicKey, props, httpExchange, true);
+            respondEncryptedProperties(p.publicKey, props, httpExchange);
         }
     }
     /**
@@ -632,7 +636,7 @@ public class TeleportaRelay {
                     String.format("f_%d%s", generateUniqueID(), EXT_UPLOAD));
             final byte[] buffer = new byte[4096];
             // transfer file
-            try (InputStream in = httpExchange.getRequestBody();
+            try (CountingInputStream in = new CountingInputStream(httpExchange.getRequestBody());
                  FileOutputStream fout = new FileOutputStream(out)) {
                 for (int n = in.read(buffer); n >= 0; n = in.read(buffer)) {
                     // we need to update lastSeen during uploading, because it could be slow
@@ -640,27 +644,14 @@ public class TeleportaRelay {
                     fout.write(buffer, 0, n);
                     fout.flush();
                 }
-
-                // build target file, but with .DAT extension
-                final File dat_out = new File(out.getParentFile(),
-                        out.getName().substring(0, out.getName().length() - EXT_UPLOAD.length())+EXT_FILE);
-                if (dat_out.exists() && !dat_out.delete()) {
-                    LOG.warning(TeleportaError.messageFor(0x6107,
-                            dat_out.getAbsolutePath()));
-                }
-                // now move from .upload to .dat
-                // note: this required to forbid cases when non-completed uploads will be fetched from client side
-                if (!out.renameTo(dat_out)) {
-                    LOG.warning(TeleportaError.messageFor(0x6115,
-                            dat_out.getAbsolutePath()));
-                }
-                if (LOG.isLoggable(Level.FINE)) {
-                    LOG.fine(TeleportaMessage.of("teleporta.system.message.fileUploaded",
-                            dat_out.getAbsolutePath()));
-                }
                 //  respond 200 OK with no data
                 httpExchange.sendResponseHeaders(200, 0);
                 httpExchange.close();
+                if (LOG.isLoggable(Level.FINE)) {
+                    LOG.fine(TeleportaMessage.of("teleporta.system.message.fileUploaded",
+                            out.getAbsolutePath(),
+                            in.getCount()));
+                }
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
                 // delete uncompleted upload on error
@@ -673,6 +664,9 @@ public class TeleportaRelay {
                 }
                 //  respond 500 with no data
                 respondAndClose(500, httpExchange);
+            } finally {
+                // cannot rename file when it's opened on Windows
+                renameUploadedFile(out);
             }
         }
     }
@@ -764,6 +758,7 @@ public class TeleportaRelay {
         }
     }
 
+
     /**
      * Handler to download updated clipboard contents
      */
@@ -813,7 +808,7 @@ public class TeleportaRelay {
                 return;
             }
             httpExchange.sendResponseHeaders(200, 0);
-            try (OutputStream out = httpExchange.getResponseBody();
+            try (CountingOutputStream out = new CountingOutputStream(httpExchange.getResponseBody());
                  FileInputStream fin = new FileInputStream(rFile)) {
                 AbstractClient.checkPacketHeader(fin,false);
                 // try to extract session key first (AES)
@@ -842,7 +837,8 @@ public class TeleportaRelay {
                 p.needLoadClipboard = false;
                 if (LOG.isLoggable(Level.FINE)) {
                     LOG.fine(TeleportaMessage.of("teleporta.system.message.fileDownloaded",
-                            rFile.getAbsolutePath()));
+                            rFile.getAbsolutePath(),
+                            out.getCount()));
                 }
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
@@ -897,7 +893,7 @@ public class TeleportaRelay {
             }
             httpExchange.sendResponseHeaders(200, rFile.length());
             final byte[] buffer = new byte[4096];
-            try (OutputStream out = httpExchange.getResponseBody();
+            try (CountingOutputStream out = new CountingOutputStream(httpExchange.getResponseBody());
                  FileInputStream fin = new FileInputStream(rFile)) {
                 // respond file data
                 for (int n = fin.read(buffer); n >= 0; n = fin.read(buffer)) {
@@ -908,7 +904,8 @@ public class TeleportaRelay {
                 }
                 if (LOG.isLoggable(Level.FINE)) {
                     LOG.fine(TeleportaMessage.of("teleporta.system.message.fileDownloaded",
-                            rFile.getAbsolutePath()));
+                            rFile.getAbsolutePath(),
+                            out.getCount()));
                 }
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
@@ -993,19 +990,19 @@ public class TeleportaRelay {
          *
          * @param props    filled properties object
          * @param exchange HttpExchange instance
-         * @param close    if true - HttpExchange.close() method will be called
          */
-        protected void respondProperties(Properties props, HttpExchange exchange, boolean close) {
-            try (OutputStream os = exchange.getResponseBody()) {
+        protected void respondProperties(Properties props, HttpExchange exchange) {
+            try (CountingOutputStream os = new CountingOutputStream(exchange.getResponseBody())) {
                 exchange.sendResponseHeaders(200, 0);
                 props.store(os, "");
                 os.flush();
+                if (LOG.isLoggable(Level.FINE))
+                    LOG.fine(TeleportaMessage.of("teleporta.system.message.bytesSent",
+                            os.getCount()));
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             } finally {
-                if (close) {
-                    exchange.close();
-                }
+                exchange.close();
             }
         }
         /**
@@ -1014,12 +1011,11 @@ public class TeleportaRelay {
          * @param portalPk portal (client) public key
          * @param props    properties object
          * @param exchange current http exchange context
-         * @param close    if true - closes output stream
          */
         protected void respondEncryptedProperties(String portalPk,
                                                   Properties props,
-                                                  HttpExchange exchange, boolean close) {
-            try (OutputStream os = exchange.getResponseBody();
+                                                  HttpExchange exchange) {
+            try (CountingOutputStream os = new CountingOutputStream(exchange.getResponseBody());
                  ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                 exchange.sendResponseHeaders(200, 0);
                 os.write(AbstractClient.TELEPORTA_PACKET_HEADER);
@@ -1038,12 +1034,14 @@ public class TeleportaRelay {
                     tc.encryptData(sk, in, os);
                 }
                 os.flush();
+                if (LOG.isLoggable(Level.FINE))
+                    LOG.fine(TeleportaMessage.of("teleporta.system.message.bytesSent",
+                            os.getCount()));
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             } finally {
-                if (close) {
-                    exchange.close();
-                }
+                exchange.close();
+
             }
         }
         /**
@@ -1198,4 +1196,30 @@ public class TeleportaRelay {
         System.out.printf("%s|%n", ("|TELEPORTA" + toHex(data, 0, 0))
                 .replaceAll(".{80}(?=.)", "$0\n"));
     }
+
+    static void renameUploadedFile(File out) {
+        if (!out.exists()) {
+            return;
+        }
+
+        // build target file, but with .DAT extension
+        final File dat_out = new File(out.getParentFile(),
+                out.getName().substring(0, out.getName().length() - EXT_UPLOAD.length())+EXT_FILE);
+        if (dat_out.exists() && !dat_out.delete()) {
+            LOG.warning(TeleportaError.messageFor(0x6107,
+                    dat_out.getAbsolutePath()));
+        }
+
+        if (LOG.isLoggable(Level.FINE)) {
+            LOG.fine(TeleportaMessage.of("teleporta.system.message.fileUploaded",
+                    dat_out.getAbsolutePath()));
+        }
+        // now move from .upload to .dat
+        // note: this required to forbid cases when non-completed uploads will be fetched from client side
+        if (!out.renameTo(dat_out)) {
+            LOG.warning(TeleportaError.messageFor(0x6115,
+                    dat_out.getAbsolutePath()));
+        }
+    }
+
 }

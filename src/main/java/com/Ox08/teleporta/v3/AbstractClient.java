@@ -432,14 +432,4 @@ public abstract class AbstractClient {
         }
     }
 
-    /**
-     * Calc percent between provided numbers
-     * @param count
-     * @param total
-     * @return
-     *      rounded percent as int
-     */
-    protected static int percent(long count,long total)  {
-        return (int)(count * 100.0 / total + 0.5);
-    }
-}
+   }

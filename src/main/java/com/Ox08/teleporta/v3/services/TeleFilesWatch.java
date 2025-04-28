@@ -24,7 +24,6 @@ import static java.nio.file.StandardWatchEventKinds.*;
  */
 public class TeleFilesWatch {
     public static final int FILES_BULK_LIMIT = 1000;
-
     private final static Logger LOG = Logger.getLogger("TC");
     private final ScheduledExecutorService ses;
     // actual watcher implementation used
@@ -43,7 +42,7 @@ public class TeleFilesWatch {
     private final Map<Path,DirState> lockFiles;
     // mark that watcher service is running
     private volatile boolean running;
-
+    // allow file renaming to display progress
     private final boolean renameWithPercent;
 
     /**
@@ -599,10 +598,10 @@ public class TeleFilesWatch {
     }
 
     private static boolean isUncompletedPrefix(String name) {
+        if (name==null || name.length()<6)
+            return false;
         if (name.startsWith("(0%) ") || name.startsWith("(100%) "))
             return true;
-        final String n =name.substring(0,6);
-        System.out.println("_n=["+n+"] match:" +n.matches("\\([0-9]{2}%\\) "));
-        return n.matches("\\([0-9]{2}%\\) ");
+        return name.substring(0,6).matches("\\([0-9]{2}%\\) ");
     }
 }
