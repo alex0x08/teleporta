@@ -50,7 +50,8 @@ public class AbstractI18nMessageStore  {
     }
     // add & load additional bundle
     public void addBundle(String name) {
-        this.addBundle(ResourceBundle.getBundle(name, messageLocale));
+        this.addBundle(
+                ResourceBundle.getBundle(name, messageLocale));
     }
     public synchronized void addBundle(ResourceBundle r) {
         this.additionalBundles.add(r);
@@ -78,8 +79,6 @@ public class AbstractI18nMessageStore  {
         for (ResourceBundle r : this.additionalBundles)
             if (r.containsKey(key))
                 return r.getString(key);
-
-
         return null;
     }
 }

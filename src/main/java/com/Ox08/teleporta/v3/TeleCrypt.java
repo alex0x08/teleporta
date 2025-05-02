@@ -112,8 +112,9 @@ public class TeleCrypt {
             final Cipher cipher = Cipher.getInstance(SESSION_CYPHER);
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
             final byte[] buffer = new byte[4096];
-            final AbstractClient.CountingZipInputStream cz = inputStream instanceof AbstractClient.CountingZipInputStream
-                    ? (AbstractClient.CountingZipInputStream) inputStream :null;
+            final TeleportaCommons.CountingZipInputStream cz =
+                    inputStream instanceof TeleportaCommons.CountingZipInputStream
+                    ? (TeleportaCommons.CountingZipInputStream) inputStream :null;
             int bytesRead;
             // don't wrap in try-catch - don't close it there!
             final CipherInputStream cipherIn = new CipherInputStream(inputStream, cipher);
@@ -138,7 +139,7 @@ public class TeleCrypt {
 
 
     public void decryptFolder(SecretKey key,
-                            InputStream inputStream, File zipFolder) {
+                            InputStream inputStream, File zipFolder, long fsize) {
         try {
             final byte[] fileIv = new byte[IV_LEN];
             // read stored IV
@@ -150,8 +151,17 @@ public class TeleCrypt {
             cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(fileIv));
             // don't wrap in try-catch - don't close it there!
             final CipherInputStream cipherIn = new CipherInputStream(inputStream, cipher);
-            final ZipInputStream zipIn = new ZipInputStream(cipherIn);
+            final TeleportaCommons.CountingZipInputStream zipIn = new TeleportaCommons.CountingZipInputStream(null,fsize,cipherIn);
+            final String origName = zipFolder.getName();
             for (ZipEntry ze; (ze = zipIn.getNextEntry()) != null; ) {
+                final int p = zipIn.getPercent();
+                if (p != 100 && p % 10 == 0) {
+                    final File zipFolder2 = new File(zipFolder.getParentFile(),
+                            String.format("(%d%%) %s", p, origName));
+                    if (!zipFolder.renameTo(zipFolder2))
+                        throw TeleportaError.withError(0x6105, "Cannot rename file");
+                    zipFolder = zipFolder2;
+                }
                 final Path resolvedPath = zipFolder
                         .getParentFile().toPath().resolve(ze.getName());
                 if (ze.isDirectory())
@@ -188,9 +198,9 @@ public class TeleCrypt {
             // note: required custom implementation to avoid closing of parent stream
             final NonclosableCipherOutputStream cipherOut
                     = new NonclosableCipherOutputStream(outputStream, cipher);
-            final AbstractClient.CountingZipOutputStream cz =
-                    outputStream instanceof AbstractClient.CountingZipOutputStream
-                    ? (AbstractClient.CountingZipOutputStream) outputStream :null;
+            final TeleportaCommons.CountingZipOutputStream cz =
+                    outputStream instanceof TeleportaCommons.CountingZipOutputStream
+                    ? (TeleportaCommons.CountingZipOutputStream) outputStream :null;
 
             // store IV directly in file as first 16 bytes
             final byte[] iv = cipher.getIV();
@@ -236,7 +246,8 @@ public class TeleCrypt {
             final byte[] iv = cipher.getIV();
             outputStream.write(iv);
             // don't close !
-            final ZipOutputStream zos = new ZipOutputStream(cipherOut);
+            final TeleportaCommons.CountingZipOutputStream zos = new TeleportaCommons
+                    .CountingZipOutputStream(null,folder.length(),cipherOut);
             final Path pp = folder.toPath();
             try (Stream<Path> entries = Files.walk(pp)
                     .filter(path -> !Files.isDirectory(path))) {
@@ -304,9 +315,9 @@ public class TeleCrypt {
             int bytesRead;
             // don't wrap in try-catch - don't close it there!
             final CipherInputStream cipherIn = new CipherInputStream(inputStream, cipher);
-            while ((bytesRead = cipherIn.read(buffer)) != -1) {
+            while ((bytesRead = cipherIn.read(buffer)) != -1)
                 cipherOut.write(buffer, 0, bytesRead);
-            }
+
             cipherOut.doFinal();
         } catch (TeleportationException | IOException 
                 | InvalidAlgorithmParameterException 

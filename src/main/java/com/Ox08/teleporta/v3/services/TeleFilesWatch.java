@@ -191,9 +191,9 @@ public class TeleFilesWatch {
                         if (fileCounter > FILES_BULK_LIMIT)
                             break;
                         final File f = e.toFile();
-                        if (renameWithPercent && isUncompletedPrefix(f.getName())) {
+                        if (renameWithPercent && isUncompletedPrefix(f.getName()))
                             continue;
-                        }
+
                         if (processingAfterUnlock.contains(f))
                             continue;
                         if (!isAcceptable(f,false))
@@ -389,9 +389,10 @@ public class TeleFilesWatch {
                         final WatchEvent<Path> ev = (WatchEvent<Path>) event;
                         final Path name = ev.context(),
                                 child = dir.resolve(name);
-                        if (renameWithPercent && isUncompletedPrefix(child.getFileName().toString())) {
+                        if (renameWithPercent
+                                && isUncompletedPrefix(child.getFileName().toString()))
                             continue;
-                        }
+
                         if (kind == ENTRY_DELETE) {
                             // we don't process any other removals, only lock file!
                             if (!useLockFile)
@@ -458,10 +459,10 @@ public class TeleFilesWatch {
                             }
 
                             // print out event
-                            if (LOG.isLoggable(Level.FINE)) {
+                            if (LOG.isLoggable(Level.FINE))
                                 LOG.fine(String.format("%s: %s: %s",
                                         event.kind().name(), child, name));
-                            }
+
                             fq.add(new FileEvent(child.toFile(),
                                     child.getParent().toFile().getName()));
                         }
@@ -515,11 +516,11 @@ public class TeleFilesWatch {
                                 TeleportaMessage.of("teleporta.service.fileWatch.lockFile"));
                         if (!lock.exists()) {
                             lockFiles.put(p,DirState.PROCESSING);
-                            if (LOG.isLoggable(Level.FINE)) {
+                            if (LOG.isLoggable(Level.FINE))
                                 LOG.fine(TeleportaMessage
                                         .of("teleporta.system.message.lockFileRemoved",
                                         p));
-                            }
+
                         }
                         continue;
                     }
@@ -531,9 +532,9 @@ public class TeleFilesWatch {
                                 break;
 
                             final File f = e.toFile();
-                            if (renameWithPercent && isUncompletedPrefix(f.getName())) {
+                            if (renameWithPercent && isUncompletedPrefix(f.getName()))
                                 continue;
-                            }
+
                             if (processing.contains(f))
                                 continue;
 

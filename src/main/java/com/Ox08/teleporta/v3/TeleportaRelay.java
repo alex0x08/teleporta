@@ -473,10 +473,10 @@ public class TeleportaRelay {
                 // register new portal on relay
                 rc.portals.put(id, new RuntimePortal(name, publicKey));
                 rc.portalNames.put(name, id);
-                if (LOG.isLoggable(Level.FINE)) {
+                if (LOG.isLoggable(Level.FINE))
                     LOG.fine(TeleportaMessage
                             .of("teleporta.system.message.portalRegistered", id));
-                }
+
             }
             // respond back generated ID
             final Properties resp = new Properties();
@@ -632,9 +632,9 @@ public class TeleportaRelay {
                 respondAndClose(403, httpExchange);
                 return;
             }
-            if (LOG.isLoggable(Level.FINE)) {
+            if (LOG.isLoggable(Level.FINE))
                 LOG.fine(TeleportaMessage.of("teleporta.system.message.fromTo", from, to));
-            }
+
             final RuntimePortal p = rc.portals.get(to);
             // generate storage folder
             // external form is used as folder name
@@ -649,7 +649,8 @@ public class TeleportaRelay {
             try (CountingInputStream in = new CountingInputStream(httpExchange.getRequestBody());
                  FileOutputStream fout = new FileOutputStream(out)) {
                 for (int n = in.read(buffer); n >= 0; n = in.read(buffer)) {
-                    // we need to update lastSeen during uploading, because it could be slow
+                    // we need to update lastSeen during uploading,
+                    // because it could be slow
                     p.lastSeen = System.currentTimeMillis();
                     fout.write(buffer, 0, n);
                     fout.flush();
@@ -657,19 +658,20 @@ public class TeleportaRelay {
                 //  respond 200 OK with no data
                 httpExchange.sendResponseHeaders(200, 0);
                 httpExchange.close();
-                if (LOG.isLoggable(Level.FINE)) {
-                    LOG.fine(TeleportaMessage.of("teleporta.system.message.fileUploaded",
+                if (LOG.isLoggable(Level.FINE))
+                    LOG.fine(TeleportaMessage
+                            .of("teleporta.system.message.fileUploaded",
                             out.getAbsolutePath(),
                             in.getCount()));
-                }
+
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
                 // delete uncompleted upload on error
                 try {
-                    if (!out.delete()) {
+                    if (!out.delete())
                         LOG.warning(TeleportaError.messageFor(0x6107,
                                 out.getAbsolutePath()));
-                    }
+
                 } catch (Exception ignored) {
                 }
                 //  respond 500 with no data
@@ -713,11 +715,13 @@ public class TeleportaRelay {
                 respondAndClose(403, httpExchange);
                 return;
             }
-            if (LOG.isLoggable(Level.FINE)) {
-                LOG.fine(TeleportaMessage.of("teleporta.system.message.from", from));
-            }
+            if (LOG.isLoggable(Level.FINE))
+                LOG.fine(TeleportaMessage.of("teleporta.system.message.from",
+                        from));
+
             // build clipboard file
-            final File out = new File(rc.storageDir, String.format("cb_%d_f%s", System.currentTimeMillis(), EXT_FILE));
+            final File out = new File(rc.storageDir,
+                    String.format("cb_%d_f%s", System.currentTimeMillis(), EXT_FILE));
             // if not created - just respond bad request
             if (!out.createNewFile()) {
                 // clipboard file not found
@@ -747,9 +751,8 @@ public class TeleportaRelay {
                 rc.currentCbFile = out;
                 // notify all other about clipboard update
                 for (String k : rc.portals.keySet()) {
-                    if (k.equals(from)) {
+                    if (k.equals(from))
                         continue;
-                    }
                     final RuntimePortal p = rc.portals.get(k);
                     p.needLoadClipboard = true;
                 }
@@ -912,11 +915,11 @@ public class TeleportaRelay {
                     out.write(buffer, 0, n);
                     out.flush();
                 }
-                if (LOG.isLoggable(Level.FINE)) {
+                if (LOG.isLoggable(Level.FINE))
                     LOG.fine(TeleportaMessage.of("teleporta.system.message.fileDownloaded",
                             rFile.getAbsolutePath(),
                             out.getCount()));
-                }
+
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             } finally {
@@ -1051,7 +1054,6 @@ public class TeleportaRelay {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             } finally {
                 exchange.close();
-
             }
         }
         /**
@@ -1208,28 +1210,27 @@ public class TeleportaRelay {
     }
 
     static void renameUploadedFile(File out) {
-        if (!out.exists()) {
+        if (!out.exists())
             return;
-        }
 
         // build target file, but with .DAT extension
         final File dat_out = new File(out.getParentFile(),
                 out.getName().substring(0, out.getName().length() - EXT_UPLOAD.length())+EXT_FILE);
-        if (dat_out.exists() && !dat_out.delete()) {
+        if (dat_out.exists() && !dat_out.delete())
             LOG.warning(TeleportaError.messageFor(0x6107,
                     dat_out.getAbsolutePath()));
-        }
 
-        if (LOG.isLoggable(Level.FINE)) {
+
+        if (LOG.isLoggable(Level.FINE))
             LOG.fine(TeleportaMessage.of("teleporta.system.message.fileUploaded",
                     dat_out.getAbsolutePath()));
-        }
+
         // now move from .upload to .dat
         // note: this required to forbid cases when non-completed uploads will be fetched from client side
-        if (!out.renameTo(dat_out)) {
+        if (!out.renameTo(dat_out))
             LOG.warning(TeleportaError.messageFor(0x6115,
                     dat_out.getAbsolutePath()));
-        }
+
     }
 
 }

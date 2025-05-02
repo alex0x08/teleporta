@@ -442,7 +442,7 @@ public class EmbeddedClient extends AbstractClient {
                         // if its folder
                         case "folder": {
                             final File outz = new File(f, name );
-                            tc.decryptFolder(rkey, zin, outz);
+                            tc.decryptFolder(rkey, zin, outz,rFile.length());
                             break;
                         }
                         // if content is file

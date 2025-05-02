@@ -17,6 +17,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.logging.*;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Shared functions and classes, used both on relay and client sides
@@ -111,8 +113,10 @@ public class TeleportaCommons {
     }
     public static byte[] deriveKey(char[] sharedSecret, byte[] info) {
         try {
-            final SecretKeyFactory kf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1");
-            final KeySpec specs = new PBEKeySpec(sharedSecret, info, 1024, 256);
+            final SecretKeyFactory kf = SecretKeyFactory
+                    .getInstance("PBKDF2WithHmacSHA1");
+            final KeySpec specs = new PBEKeySpec(sharedSecret,
+                    info, 1024, 256);
             final SecretKey key = kf.generateSecret(specs);
             return key.getEncoded();
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
@@ -166,12 +170,14 @@ public class TeleportaCommons {
      * @param file
      *          folder or file to remove
      * @param removeParent
-     *          if true - also removes specified folder, otherwise - just inner content
+     *          if true - also removes specified folder,
+     *          otherwise - just inner content
      * @param ext
      *          file extension, if not null - this file will be skipped
      */
     public static void deleteRecursive(File file, boolean removeParent,String ext) {
-        if (file.isFile() && (ext==null || !file.getName().toLowerCase().endsWith(ext))) {
+        if (file.isFile() && (ext==null
+                || !file.getName().toLowerCase().endsWith(ext))) {
             if (!file.delete())
                 // cannot delete file
                 LOG.warning(TeleportaError.messageFor(0x6106,
@@ -378,6 +384,95 @@ public class TeleportaCommons {
         @Override
         public void close() throws IOException {
             out.close();
+        }
+    }
+
+    /**
+     * Custom output stream, used to count bytes on write
+     */
+    static class CountingZipOutputStream extends ZipOutputStream {
+        private final long total;
+        private final String fileId;
+        private long count;
+        /**
+         * Wraps another output stream, counting the number of bytes written.
+         *
+         * @param out the output stream to be wrapped
+         */
+        public CountingZipOutputStream(String fileId,long total,OutputStream out) {
+            super(out); this.fileId = fileId; this.total = total;
+        }
+        public String getFileId() {
+            return fileId;
+        }
+        public int getPercent() {
+            return percent(count,total);
+        }
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            super.write(b, off, len); count += len;
+        }
+        @Override
+        public void write(int b) throws IOException {
+            super.write(b); count++;
+        }
+        // Overriding close() because FilterOutputStream's close() method pre-JDK8 has bad behavior:
+        // it silently ignores any exception thrown by flush(). Instead, just close the delegate stream.
+        // It should flush itself if necessary.
+        @Override
+        public void close() throws IOException {
+            super.close();
+        }
+    }
+
+    /**
+     * Custom input stream, used to count bytes on read
+     */
+    static class CountingZipInputStream extends ZipInputStream {
+        private long count,mark = -1;
+        private final long total;
+        private final String fileId;
+        /**
+         * Wraps another input stream, counting the number of bytes read.
+         *
+         * @param in the input stream to be wrapped
+         */
+        public CountingZipInputStream(String fileId,long total,InputStream in) {
+            super(in); this.total = total; this.fileId = fileId;
+        }
+        public String getFileId() {
+            return fileId;
+        }
+        public int getPercent() {
+            return percent(count,total);
+        }
+        @Override
+        public int read() throws IOException {
+            int result = super.read();
+            if (result != -1) count++;
+            return result;
+        }
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            final int result = super.read(b, off, len);
+            if (result != -1) count += result;
+            return result;
+        }
+        @Override
+        public long skip(long n) throws IOException {
+            final long result = super.skip(n); count += result; return result;
+        }
+        @Override
+        public synchronized void mark(int readlimit) {
+            super.mark(readlimit); mark = count;
+        }
+        @Override
+        public synchronized void reset() throws IOException {
+            if (!in.markSupported())
+                throw new IOException("Mark not supported");
+            if (mark == -1)
+                throw new IOException("Mark not set");
+            super.reset(); count = mark;
         }
     }
 

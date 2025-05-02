@@ -17,8 +17,10 @@ public class TeleportaError extends AbstractI18nMessageStore {
     }
 
     @SuppressWarnings("unchecked")
-    private <T extends TeleportationException> T createException(int code, Object... params) {
-        return createExceptionImpl((Class<T>) PortalException.class,  code, null, null, params);
+    private <T extends TeleportationException> T createException(int code,
+                                                                 Object... params) {
+        return createExceptionImpl((Class<T>) PortalException.class,
+                code, null, null, params);
     }
     /**
      * создать объект исключения со сформированным сообщением об ошибке
@@ -35,12 +37,11 @@ public class TeleportaError extends AbstractI18nMessageStore {
             Class<T> clazz,
             int code,
             String message, Exception parent, Object... params) {
-        final String errorMsg = getErrorMessage(code, message, parent, true, params);
+        final String errorMsg = getErrorMessage(code, message,
+                parent, true, params);
         try {
-
-                return clazz.getConstructor(int.class, String.class, Exception.class)
+            return clazz.getConstructor(int.class, String.class, Exception.class)
                         .newInstance(code, errorMsg, parent);
-
         } catch (NoSuchMethodException
                  | SecurityException
                  | InstantiationException
@@ -61,9 +62,11 @@ public class TeleportaError extends AbstractI18nMessageStore {
      * @return
      */
     private String getErrorMessage(int code,
-                                   String message, Exception parent, boolean prefix, Object... params) {
+                                   String message, Exception parent,
+                                   boolean prefix, Object... params) {
         // пытаемся найти текст ошибки по коду
-        String errorMsg = getMessage("teleporta.system.error." + String.format("0x%x", code));
+        String errorMsg = getMessage("teleporta.system.error."
+                + String.format("0x%x", code));
         // если не нашли - формируем 'неизвестную ошибку'
         if (errorMsg == null) {
             errorMsg = getMessage("teleporta.system.error.0x6000");
@@ -72,44 +75,45 @@ public class TeleportaError extends AbstractI18nMessageStore {
         // если нет доп. сообщения
         if (message == null) {
             // если нет исключения
-            if (parent == null) {
-                // формируем выходное сообщение, подставляем в шаблон переданные параметры
+            if (parent == null)
+                // формируем выходное сообщение, подставляем в шаблон
+                // переданные параметры
                 errorMsg = formatMessage(errorMsg, params);
-            } else {
+            else {
                 // если есть исключение - добавляем в набор параметров 
                 // сообщение об ошибке первым аргументом
                 final Object[] pparams;
                 if (parent instanceof TeleportationException
-                        && parent.getCause() != null) {
+                        && parent.getCause() != null)
                     pparams = prepareParams(params, getMessage(parent.getCause()));
-                } else {
+                else
                     pparams = prepareParams(params, getMessage(parent));
-                }
+
                 // формируем выходное сообщение
                 errorMsg = formatMessage(errorMsg, pparams);
             }
         } else {
             // если есть доп. сообщение
-            if (parent == null) {
+            if (parent == null)
                 // формируем выходное сообщение, используем доп. сообщение как шаблон
                 errorMsg = formatMessage(message, params);
-            } else {
+            else {
                 // если есть исключение - добавляем в набор параметров 
                 // сообщение об ошибке первым аргументом
                 final Object[] pparams;
-                if (parent instanceof TeleportationException) {
+                if (parent instanceof TeleportationException)
                     pparams = prepareParams(params, getMessage(parent.getCause()));
-                } else {
+                else
                     pparams = prepareParams(params, getMessage(parent));
-                }
+
                 // формируем выходное сообщение
                 errorMsg = formatMessage(message, pparams);
             }
         }
         // если используется префикс
-        if (prefix) {
+        if (prefix)
             errorMsg = String.format("[%s] %s", String.format("0x%x", code), errorMsg);
-        }
+
         return errorMsg;
     }
     /**
@@ -126,9 +130,8 @@ public class TeleportaError extends AbstractI18nMessageStore {
             pparams = new Object[params.length + 1];
             pparams[0] = message;
             System.arraycopy(params, 0, pparams, 1, params.length);
-        } else {
+        } else
             pparams = new Object[]{message};
-        }
         return pparams;
     }
     /**
@@ -142,14 +145,11 @@ public class TeleportaError extends AbstractI18nMessageStore {
      */
     private static String getMessage(Throwable e) {
         String s = e.getLocalizedMessage();
-        if (s != null) {
+        if (s != null)
             return s;
-        }
         s = e.getMessage();
-        if (s != null) {
-            return s;
-        }
-        return e.toString();
+        return s != null ? s : e.toString();
+
     }
     // синглтон класса
     private static final TeleportaError INSTANCE = new TeleportaError();

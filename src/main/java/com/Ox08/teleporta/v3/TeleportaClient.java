@@ -793,7 +793,7 @@ public class TeleportaClient extends AbstractClient{
                         case "folder": {
                             // note on extension
                             final File outz = new File(f, name );
-                            tc.decryptFolder(rkey, zin, outz);
+                            tc.decryptFolder(rkey, zin, outz,fsize);
                             break;
                         }
                         // if content is file
